@@ -1391,7 +1391,7 @@ function handleQuotationSearch() {
   renderQuotationsTable(filtered);
 }
 
-// 報價單開立主體公司切換 -> 自動帶入聯絡窗口資料
+// 報價單開立主體公司切換：公司資料控制抬頭與條款，聯絡窗口固定採目前登入者。
 function handleQuotationCompanyChange() {
   const companySelect = document.getElementById('q_company_id');
   const compId = parseInt(companySelect.value, 10);
@@ -1399,13 +1399,14 @@ function handleQuotationCompanyChange() {
   if (!comp) return;
 
   document.getElementById('q_company_name').value = comp.companyName;
-  document.getElementById('q_company_contact_person').value = comp.contactPerson || '';
-  document.getElementById('q_company_contact_phone').value = comp.contactPhone || comp.phone || '';
-  document.getElementById('q_company_contact_email').value = comp.contactEmail || comp.email || '';
+  const currentUser = appState.currentUser || {};
+  document.getElementById('q_company_contact_person').value = currentUser.name || '';
+  document.getElementById('q_company_contact_phone').value = currentUser.phone || '';
+  document.getElementById('q_company_contact_email').value = currentUser.email || '';
 
-  document.getElementById('q_company_contact_person_text').textContent = comp.contactPerson || '未設定';
-  document.getElementById('q_company_contact_phone_text').textContent = comp.contactPhone || comp.phone || '無電話';
-  document.getElementById('q_company_contact_email_text').textContent = comp.contactEmail || comp.email || '無 Email';
+  document.getElementById('q_company_contact_person_text').textContent = currentUser.name || '未設定';
+  document.getElementById('q_company_contact_phone_text').textContent = currentUser.phone || '無電話';
+  document.getElementById('q_company_contact_email_text').textContent = currentUser.email || '無 Email';
 
   // 若尚未輸入備註，帶入該公司的預設條款
   const notesField = document.getElementById('q_notes');
@@ -1713,9 +1714,9 @@ async function handleSaveQuotation(event) {
     quotationNumber: document.getElementById('q_number').value.trim(),
     companyId: parseInt(document.getElementById('q_company_id').value, 10),
     companyName: document.getElementById('q_company_name').value,
-    companyContactPerson: document.getElementById('q_company_contact_person').value,
-    companyContactPhone: document.getElementById('q_company_contact_phone').value,
-    companyContactEmail: document.getElementById('q_company_contact_email').value,
+    salesRep: document.getElementById('q_company_contact_person').value,
+    salesPhone: document.getElementById('q_company_contact_phone').value,
+    salesEmail: document.getElementById('q_company_contact_email').value,
     customerId: parseInt(document.getElementById('q_customer_id').value, 10) || null,
     customerName: document.getElementById('q_customer_name').value.trim(),
     customerTaxId: document.getElementById('q_customer_tax_id').value.trim(),
