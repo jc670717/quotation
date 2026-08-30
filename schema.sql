@@ -256,6 +256,9 @@ CREATE INDEX IF NOT EXISTS idx_transactions_payment_status ON transactions(payme
 CREATE INDEX IF NOT EXISTS idx_transaction_invoices_tx_id ON transaction_invoices(transaction_id);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_module ON audit_logs(module);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_customers_tax_id_not_blank ON customers (tax_id) WHERE tax_id IS NOT NULL AND btrim(tax_id) <> '';
+CREATE UNIQUE INDEX IF NOT EXISTS uq_vendors_tax_id_not_blank ON vendors (tax_id) WHERE tax_id IS NOT NULL AND btrim(tax_id) <> '';
+CREATE UNIQUE INDEX IF NOT EXISTS uq_products_model_not_blank ON products (model) WHERE model IS NOT NULL AND btrim(model) <> '';
 
 -- -----------------------------------------------------------------------------
 -- 預設初始資料 (Default Master Seed)
