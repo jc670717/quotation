@@ -579,7 +579,7 @@ function switchCurrentUser(userId) {
 async function loadDashboard() {
   // 同步取得指標資料
   const metricsRes = await fetchApi('/api/metrics');
-  const quotationsRes = await fetchApi('/api/quotations?pageSize=5');
+  const quotationsRes = await fetchApi('/api/quotations?limit=5');
   const transactionsRes = await fetchApi('/api/transactions');
 
   if (metricsRes.success && metricsRes.data) {
