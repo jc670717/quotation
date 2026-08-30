@@ -2283,6 +2283,7 @@ def deleteUser(userId: int):
 def getMetrics():
     autoEnsureSchema()
     try:
+        currentYear = date.today().year
         with getDbConnection() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute("SELECT COUNT(*) as count FROM customers;")
@@ -2291,12 +2292,21 @@ def getMetrics():
                 cur.execute("SELECT COUNT(*) as count FROM products WHERE status = 'ACTIVE';")
                 productCount = cur.fetchone()["count"]
 
-                cur.execute("SELECT COUNT(*) as count, COALESCE(SUM(total_amount), 0) as total FROM quotations;")
+                cur.execute("""
+                    SELECT COUNT(*) as count, COALESCE(SUM(total_amount), 0) as total
+                    FROM quotations
+                    WHERE EXTRACT(YEAR FROM issue_date) = %s;
+                """, (currentYear,))
                 qRow = cur.fetchone()
                 quotationCount = qRow["count"]
                 quotationTotal = qRow["total"]
 
-                cur.execute("SELECT status, COUNT(*) as count FROM quotations GROUP BY status;")
+                cur.execute("""
+                    SELECT status, COUNT(*) as count
+                    FROM quotations
+                    WHERE EXTRACT(YEAR FROM issue_date) = %s
+                    GROUP BY status;
+                """, (currentYear,))
                 statusRows = cur.fetchall()
                 statusCounts = {
                     "DRAFT": 0, "SENT": 0, "ACCEPTED": 0, "REJECTED": 0, "EXPIRED": 0
@@ -2305,19 +2315,35 @@ def getMetrics():
                     if sRow["status"] in statusCounts:
                         statusCounts[sRow["status"]] = sRow["count"]
 
-                cur.execute("SELECT COUNT(*) as count, COALESCE(SUM(total_amount), 0) as revenue FROM transactions WHERE payment_status = 'PAID';")
+                cur.execute("""
+                    SELECT COUNT(*) as count,
+                           COALESCE(SUM(total_amount), 0) as revenue,
+                           COALESCE(SUM(total_amount - cost_price), 0) as profit
+                    FROM transactions
+                    WHERE payment_status = 'PAID'
+                      AND EXTRACT(YEAR FROM transaction_date) = %s;
+                """, (currentYear,))
                 txRow = cur.fetchone()
                 transactionCount = txRow["count"]
                 totalRevenue = txRow["revenue"]
+                closedProfit = txRow["profit"]
+                closedMargin = (closedProfit / totalRevenue * 100) if totalRevenue else 0
 
         return createApiResponse(
             isSuccess=True,
             data={
                 "customersCount": customerCount,
                 "productsCount": productCount,
+                "currentYear": currentYear,
+                "yearQuotationCount": quotationCount,
+                "yearQuotationTotal": float(quotationTotal),
+                "yearRevenue": float(totalRevenue),
+                "closedProfit": float(closedProfit),
+                "closedMargin": float(closedMargin),
+                "transactionsCount": transactionCount,
+                # 保留舊欄位，避免外部整合尚未更新時中斷。
                 "quotationsCount": quotationCount,
                 "quotationsTotal": float(quotationTotal),
-                "transactionsCount": transactionCount,
                 "totalRevenue": float(totalRevenue),
                 "statusCounts": statusCounts
             },
