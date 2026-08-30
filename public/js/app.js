@@ -137,6 +137,17 @@ async function fetchApi(endpoint, options = {}) {
   }
 }
 
+function acquireFormSubmitLock(form) {
+  if (!form || form.dataset.isSubmitting === 'true') return null;
+  const submitButton = form.querySelector('button[type="submit"]');
+  form.dataset.isSubmitting = 'true';
+  if (submitButton) submitButton.disabled = true;
+  return () => {
+    form.dataset.isSubmitting = 'false';
+    if (submitButton) submitButton.disabled = false;
+  };
+}
+
 // ============================================================
 // 1. 使用者認證、登入/登出與初始化 (Authentication & Lifecycle)
 // ============================================================
@@ -1672,6 +1683,8 @@ async function handleSaveQuotation(event) {
     showAlert('請至少新增一項報價品項明細', 'warning');
     return;
   }
+  const releaseSubmitLock = acquireFormSubmitLock(event.currentTarget);
+  if (!releaseSubmitLock) return;
 
   const items = [];
   rows.forEach((row, idx) => {
@@ -1733,6 +1746,7 @@ async function handleSaveQuotation(event) {
   } else {
     showAlert(res.message || '儲存失敗', 'danger');
   }
+  releaseSubmitLock();
 }
 
 // 核心功能：一鍵將報價單轉為交易單 (Convert to Transaction)
@@ -2161,6 +2175,8 @@ function openEditTransactionModal(id) {
 
 async function handleSaveTransaction(event) {
   event.preventDefault();
+  const releaseSubmitLock = acquireFormSubmitLock(event.currentTarget);
+  if (!releaseSubmitLock) return;
   const id = document.getElementById('tx_id').value;
   const isEdit = !!id;
 
@@ -2221,6 +2237,7 @@ async function handleSaveTransaction(event) {
   } else {
     showAlert(res.message || '儲存失敗', 'danger');
   }
+  releaseSubmitLock();
 }
 
 function confirmDeleteTransaction(id, number) {
@@ -2407,6 +2424,8 @@ function openCreateCompanyModal() {
 
 async function handleSaveCompany(event) {
   event.preventDefault();
+  const releaseSubmitLock = acquireFormSubmitLock(event.currentTarget);
+  if (!releaseSubmitLock) return;
   const id = document.getElementById('comp_id').value;
   const isEdit = !!id;
 
@@ -2441,6 +2460,7 @@ async function handleSaveCompany(event) {
   } else {
     showAlert(res.message || '儲存失敗', 'danger');
   }
+  releaseSubmitLock();
 }
 
 function handleDeleteCurrentCompany() {
@@ -2600,6 +2620,8 @@ function openEditUserModal(id) {
 
 async function handleSaveUser(event) {
   event.preventDefault();
+  const releaseSubmitLock = acquireFormSubmitLock(event.currentTarget);
+  if (!releaseSubmitLock) return;
   const id = document.getElementById('u_id').value;
   const isEdit = !!id;
   const role = document.getElementById('u_role').value;
@@ -2643,6 +2665,7 @@ async function handleSaveUser(event) {
   } else {
     showAlert(res.message || '儲存失敗', 'danger');
   }
+  releaseSubmitLock();
 }
 
 function confirmDeleteUser(id, name) {
