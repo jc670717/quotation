@@ -2622,7 +2622,8 @@ async function handleSaveUser(event) {
     email: document.getElementById('u_email').value.trim(),
     role,
     status: document.getElementById('u_status').value,
-    allowedMenus,
+    // API 與資料庫以逗號分隔字串儲存，避免送出陣列造成 Pydantic 驗證失敗。
+    allowedMenus: allowedMenus.join(','),
     createdBy: appState.currentUser.name,
     updatedBy: appState.currentUser.name
   };
