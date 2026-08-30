@@ -167,6 +167,9 @@ class CustomerInput(BaseModel):
     createdBy: Optional[str] = Field(None, max_length=100)
     updatedBy: Optional[str] = Field(None, max_length=100)
 
+    class Config:
+        extra = "ignore"
+
 class VendorInput(BaseModel):
     vendorCode: Optional[str] = Field(None, max_length=50)
     vendorName: str = Field(..., min_length=1, max_length=255)
@@ -180,6 +183,9 @@ class VendorInput(BaseModel):
     createdBy: Optional[str] = Field(None, max_length=100)
     updatedBy: Optional[str] = Field(None, max_length=100)
 
+    class Config:
+        extra = "ignore"
+
 class ProductInput(BaseModel):
     productCode: Optional[str] = Field(None, max_length=50)
     productName: str = Field(..., min_length=1, max_length=255)
@@ -187,15 +193,20 @@ class ProductInput(BaseModel):
     brand: Optional[str] = Field(None, max_length=100)
     model: Optional[str] = Field(None, max_length=100)
     vendor: Optional[str] = Field(None, max_length=255)
+    vendorId: Optional[int] = None
     unit: Optional[str] = Field("件", max_length=20)
     unitPrice: Decimal = Field(..., ge=0)
     costPrice: Optional[Decimal] = Field(Decimal("0.00"), ge=0)
     stockQuantity: Optional[int] = Field(100, ge=0)
     image: Optional[str] = None
-    description: Optional[str] = Field(None, max_length=1000)
+    imageUrl: Optional[str] = None
+    description: Optional[str] = None
     status: Optional[str] = Field("ACTIVE")
     createdBy: Optional[str] = Field(None, max_length=100)
     updatedBy: Optional[str] = Field(None, max_length=100)
+
+    class Config:
+        extra = "ignore"
 
 class QuotationItemInput(BaseModel):
     productId: Optional[int] = None
@@ -211,6 +222,9 @@ class QuotationItemInput(BaseModel):
     subtotal: Optional[Decimal] = None
     sortOrder: int = 0
     notes: Optional[str] = None
+
+    class Config:
+        extra = "ignore"
 
 class QuotationInput(BaseModel):
     quotationNumber: str = Field(..., min_length=3, max_length=50)
@@ -243,6 +257,9 @@ class QuotationInput(BaseModel):
     updatedBy: Optional[str] = None
     items: List[QuotationItemInput] = Field(..., min_items=1)
 
+    class Config:
+        extra = "ignore"
+
 class InvoiceInput(BaseModel):
     id: Optional[int] = None
     invoiceNumber: str
@@ -250,6 +267,9 @@ class InvoiceInput(BaseModel):
     amount: Decimal = Field(..., ge=0)
     status: str = "PENDING"
     notes: Optional[str] = None
+
+    class Config:
+        extra = "ignore"
 
 class TransactionInput(BaseModel):
     transactionNumber: Optional[str] = None
@@ -268,6 +288,9 @@ class TransactionInput(BaseModel):
     createdBy: Optional[str] = None
     updatedBy: Optional[str] = None
     invoices: Optional[List[InvoiceInput]] = Field(default_factory=list)
+
+    class Config:
+        extra = "ignore"
 
 class CompanyInput(BaseModel):
     companyName: str = Field(..., min_length=1, max_length=255)
@@ -289,6 +312,9 @@ class CompanyInput(BaseModel):
     createdBy: Optional[str] = None
     updatedBy: Optional[str] = None
 
+    class Config:
+        extra = "ignore"
+
 class UserInput(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     username: str = Field(..., min_length=2, max_length=50)
@@ -301,6 +327,9 @@ class UserInput(BaseModel):
     status: Optional[str] = "ACTIVE"
     createdBy: Optional[str] = None
     updatedBy: Optional[str] = None
+
+    class Config:
+        extra = "ignore"
 
 
 # -----------------------------------------------------------------------------
@@ -1140,6 +1169,7 @@ def createProduct(payload: ProductInput):
                     if cur.fetchone():
                         code = f"PROD-{int(time.time())}"
 
+                img = (payload.image or payload.imageUrl or "").strip() or None
                 cur.execute("""
                     INSERT INTO products (
                         product_code, product_name, category, brand, model, vendor, unit,
@@ -1160,7 +1190,7 @@ def createProduct(payload: ProductInput):
                     float(payload.unitPrice),
                     float(payload.costPrice or 0),
                     payload.stockQuantity if payload.stockQuantity is not None else 100,
-                    payload.image,
+                    img,
                     payload.description.strip() if payload.description and payload.description.strip() else None,
                     payload.status or "ACTIVE",
                     payload.createdBy or "系統使用者",
@@ -1180,6 +1210,7 @@ def updateProduct(productId: int, payload: ProductInput):
     try:
         with getDbConnection() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                img = (payload.image or payload.imageUrl or "").strip() or None
                 cur.execute("""
                     UPDATE products
                     SET product_name = %s,
@@ -1211,7 +1242,7 @@ def updateProduct(productId: int, payload: ProductInput):
                     float(payload.unitPrice),
                     float(payload.costPrice or 0),
                     payload.stockQuantity if payload.stockQuantity is not None else 100,
-                    payload.image,
+                    img,
                     payload.description.strip() if payload.description else None,
                     payload.status or "ACTIVE",
                     payload.updatedBy or "系統使用者",

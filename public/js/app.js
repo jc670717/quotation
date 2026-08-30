@@ -103,14 +103,35 @@ async function fetchApi(endpoint, options = {}) {
       headers: { ...defaultHeaders, ...(options.headers || {}) }
     };
     const res = await fetch(endpoint, config);
-    const result = await res.json();
+    let result = {};
+    try {
+      result = await res.json();
+    } catch (e) {
+      result = { success: false, message: `伺服器回應格式錯誤 (HTTP ${res.status})` };
+    }
+
+    if (!res.ok) {
+      if (result.detail) {
+        const detailMsg = typeof result.detail === 'string'
+          ? result.detail
+          : Array.isArray(result.detail)
+            ? result.detail.map(d => `${d.loc ? d.loc.join('.') : ''}: ${d.msg}`).join(', ')
+            : JSON.stringify(result.detail);
+        return { success: false, message: `請求驗證失敗：${detailMsg}`, error: detailMsg };
+      }
+      if (result.message) {
+        return { success: false, message: result.message, error: result.error || '' };
+      }
+      return { success: false, message: `請求失敗 (HTTP ${res.status})` };
+    }
+
     if (result && result.success === false && result.error) {
       result.message = `${result.message || '操作失敗'}：${result.error}`;
     }
     return result;
   } catch (err) {
     console.error(`Fetch API Error [${endpoint}]:`, err);
-    return { success: false, data: null, message: '網路連線或 API 請求發生錯誤: ' + err.message };
+    return { success: false, data: null, message: '網路連線或 API 請求發生錯誤: ' + err.message, error: err.message };
   }
 }
 
@@ -1181,6 +1202,8 @@ async function handleSaveProduct(event) {
   const vendorName = document.getElementById('p_vendor').value.trim();
   const foundVendor = appState.vendors.find(v => v.vendorName === vendorName);
 
+  const imgVal = document.getElementById('p_image_url').value || '';
+
   const payload = {
     productCode: document.getElementById('p_code').value.trim(),
     productName: document.getElementById('p_name').value.trim(),
@@ -1188,9 +1211,10 @@ async function handleSaveProduct(event) {
     model: document.getElementById('p_model').value.trim(),
     vendor: vendorName,
     vendorId: foundVendor ? foundVendor.id : null,
-    imageUrl: document.getElementById('p_image_url').value,
+    image: imgVal,
+    imageUrl: imgVal,
     category: document.getElementById('p_category').value,
-    unit: document.getElementById('p_unit').value.trim(),
+    unit: document.getElementById('p_unit').value.trim() || '件',
     costPrice: parseFloat(document.getElementById('p_cost_price').value) || 0,
     unitPrice: parseFloat(document.getElementById('p_unit_price').value) || 0,
     stockQuantity: parseInt(document.getElementById('p_stock').value, 10) || 0,
@@ -1211,7 +1235,7 @@ async function handleSaveProduct(event) {
     if (modal) modal.hide();
     await loadProducts();
   } else {
-    showAlert(res.message || '儲存失敗', 'danger');
+    showAlert(res.error ? `${res.message || '儲存失敗'} (${res.error})` : (res.message || '儲存失敗'), 'danger', 6000);
   }
 }
 
