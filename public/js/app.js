@@ -1787,12 +1787,22 @@ function handleConvertQuotationFromView() {
 }
 
 // 檢視正式報價單 (View Formal Printable Quotation)
-function openViewQuotationModal(id) {
-  const q = appState.quotations.find(item => item.id === id);
-  if (!q) return;
+async function openViewQuotationModal(id) {
+  const cachedQuotation = appState.quotations.find(item => item.id === id);
+  if (!cachedQuotation) return;
+
+  // 清單 API 不含明細品項；預覽時改取完整報價單，避免項目表格空白。
+  const detailResponse = await fetchApi(`/api/quotations/${id}`);
+  if (!detailResponse.success || !detailResponse.data) {
+    showAlert(detailResponse.message || '讀取報價單明細失敗', 'danger');
+    return;
+  }
+  const q = detailResponse.data;
 
   const modalEl = document.getElementById('viewQuotationModal');
   modalEl.setAttribute('data-active-quotation-id', q.id);
+  const convertButton = document.getElementById('viewQConvertTxBtn');
+  if (convertButton) convertButton.classList.toggle('d-none', q.status === 'ACCEPTED');
 
   // 尋找所屬公司資料 (含 LOGO)
   const comp = appState.allCompanies.find(c => c.id === q.companyId) || appState.allCompanies[0] || {};
@@ -1829,7 +1839,7 @@ function openViewQuotationModal(id) {
           <div class="small text-muted">統一編號：${comp.taxId || '28491023'} ｜ 地址：${comp.address || '台北市'}</div>
           <div class="small text-muted">電話：${comp.phone || '-'} ｜ 官方網站：${comp.website || '-'}</div>
           <div class="small text-primary fw-semibold mt-1">
-            報價窗口：${q.companyContactPerson || comp.contactPerson || '業務部'} (📞 ${q.companyContactPhone || comp.contactPhone || comp.phone || '-'} ✉️ ${q.companyContactEmail || comp.contactEmail || comp.email || '-'})
+            報價窗口：${q.salesRep || comp.contactPerson || '業務部'} (📞 ${q.salesPhone || comp.contactPhone || comp.phone || '-'} ✉️ ${q.salesEmail || comp.contactEmail || comp.email || '-'})
           </div>
         </div>
         <div class="col-4 text-end">
