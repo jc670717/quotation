@@ -1634,8 +1634,17 @@ function openCreateQuotationModal() {
   modal.show();
 }
 
-function openEditQuotationModal(id) {
-  const q = appState.quotations.find(item => item.id === id);
+async function fetchQuotationDetails(id) {
+  const detailResponse = await fetchApi(`/api/quotations/${id}`);
+  if (!detailResponse.success || !detailResponse.data) {
+    showAlert(detailResponse.message || '讀取報價單明細失敗', 'danger');
+    return null;
+  }
+  return detailResponse.data;
+}
+
+async function openEditQuotationModal(id) {
+  const q = await fetchQuotationDetails(id);
   if (!q) return;
 
   document.getElementById('q_id').value = q.id;
@@ -1788,16 +1797,9 @@ function handleConvertQuotationFromView() {
 
 // 檢視正式報價單 (View Formal Printable Quotation)
 async function openViewQuotationModal(id) {
-  const cachedQuotation = appState.quotations.find(item => item.id === id);
-  if (!cachedQuotation) return;
-
   // 清單 API 不含明細品項；預覽時改取完整報價單，避免項目表格空白。
-  const detailResponse = await fetchApi(`/api/quotations/${id}`);
-  if (!detailResponse.success || !detailResponse.data) {
-    showAlert(detailResponse.message || '讀取報價單明細失敗', 'danger');
-    return;
-  }
-  const q = detailResponse.data;
+  const q = await fetchQuotationDetails(id);
+  if (!q) return;
 
   const modalEl = document.getElementById('viewQuotationModal');
   modalEl.setAttribute('data-active-quotation-id', q.id);
