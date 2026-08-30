@@ -2066,7 +2066,9 @@ function devApiPlugin(): Plugin {
                 phone: user.phone,
                 email: user.email,
                 allowedMenus: user.allowedMenus,
-                status: user.status
+                status: user.status,
+                // 僅供 Vite 記憶體 Mock API 使用；正式 API 會簽發 HMAC 權杖。
+                accessToken: 'vite-development-session'
               },
               message: `歡迎回來，${user.name}！登入成功`
             }));
@@ -2212,6 +2214,14 @@ function devApiPlugin(): Plugin {
 
 export default defineConfig(() => {
   return {
+    // 正式介面位於 public/，本機 Vite 預覽也必須使用同一份入口，避免顯示空白 React 容器。
+    root: 'public',
+    // root 改為 public 後，仍需將同目錄的原生 JavaScript/CSS 一併複製到建置產物。
+    publicDir: path.resolve(__dirname, 'public'),
+    build: {
+      outDir: path.resolve(__dirname, 'dist'),
+      emptyOutDir: true,
+    },
     plugins: [react(), tailwindcss(), devApiPlugin()],
     resolve: {
       alias: {

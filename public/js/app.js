@@ -98,6 +98,8 @@ function showAlert(message, type = 'success', duration = 3500) {
 async function fetchApi(endpoint, options = {}) {
   try {
     const defaultHeaders = { 'Content-Type': 'application/json' };
+    const accessToken = localStorage.getItem('qms_access_token') || sessionStorage.getItem('qms_access_token');
+    if (accessToken) defaultHeaders.Authorization = `Bearer ${accessToken}`;
     const config = {
       ...options,
       headers: { ...defaultHeaders, ...(options.headers || {}) }
@@ -144,35 +146,35 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 async function initializeApp() {
+  // 未登入前不可預載帳號或商務資料，避免未授權請求與資料外洩。
+  const savedUserJson = localStorage.getItem('qms_user') || sessionStorage.getItem('qms_user');
+  const accessToken = localStorage.getItem('qms_access_token') || sessionStorage.getItem('qms_access_token');
+  if (!savedUserJson || !accessToken) {
+    showLoginScreen();
+    return;
+  }
+
+  try {
+    appState.currentUser = JSON.parse(savedUserJson);
+  } catch {
+    localStorage.removeItem('qms_user');
+    sessionStorage.removeItem('qms_user');
+    localStorage.removeItem('qms_access_token');
+    sessionStorage.removeItem('qms_access_token');
+    showLoginScreen();
+    return;
+  }
+
   await loadInitialUsers();
   await loadInitialCompanies();
   await loadInitialVendors();
   await loadInitialCustomers();
   await loadInitialProducts();
 
-  // 檢查本機儲存的登入狀態
-  const savedUserJson = localStorage.getItem('qms_user') || sessionStorage.getItem('qms_user');
-  if (savedUserJson) {
-    try {
-      const savedUser = JSON.parse(savedUserJson);
-      const found = appState.allUsers.find(u => u.username === savedUser.username);
-      if (found && found.status === 'ACTIVE') {
-        appState.currentUser = found;
-        showAppLayout();
-        renderCurrentUserHeader();
-        applySidebarMenuPermissions();
-        switchView('dashboard');
-        return;
-      }
-    } catch {
-      // JSON 解析失敗則清除
-      localStorage.removeItem('qms_user');
-      sessionStorage.removeItem('qms_user');
-    }
-  }
-
-  // 若未登入，顯示全螢幕登入畫面供使用者體驗與測試
-  showLoginScreen();
+  showAppLayout();
+  renderCurrentUserHeader();
+  applySidebarMenuPermissions();
+  switchView('dashboard');
 }
 
 // 顯示全螢幕登入畫面
@@ -257,12 +259,22 @@ async function handleLogin(e) {
   }
 
   if (res.success && res.data) {
-    appState.currentUser = res.data;
+    const { accessToken, ...currentUser } = res.data;
+    if (!accessToken) {
+      if (errorAlert) {
+        errorAlert.textContent = '伺服器未提供登入憑證，請聯繫系統管理員。';
+        errorAlert.classList.remove('d-none');
+      }
+      return;
+    }
+    appState.currentUser = currentUser;
     const isRemember = rememberMe ? rememberMe.checked : true;
     if (isRemember) {
-      localStorage.setItem('qms_user', JSON.stringify(res.data));
+      localStorage.setItem('qms_user', JSON.stringify(currentUser));
+      localStorage.setItem('qms_access_token', accessToken);
     } else {
-      sessionStorage.setItem('qms_user', JSON.stringify(res.data));
+      sessionStorage.setItem('qms_user', JSON.stringify(currentUser));
+      sessionStorage.setItem('qms_access_token', accessToken);
     }
 
     showAppLayout();
@@ -296,6 +308,8 @@ async function handleLogout() {
   await fetchApi('/api/auth/logout', { method: 'POST' });
   localStorage.removeItem('qms_user');
   sessionStorage.removeItem('qms_user');
+  localStorage.removeItem('qms_access_token');
+  sessionStorage.removeItem('qms_access_token');
 
   showLoginScreen();
   showAlert('您已成功安全登出系統', 'info');
@@ -812,6 +826,12 @@ function openEditCustomerModal(id) {
 
 async function handleSaveCustomer(event) {
   event.preventDefault();
+  const form = event.currentTarget;
+  if (form.dataset.isSubmitting === 'true') return;
+  form.dataset.isSubmitting = 'true';
+  const submitButton = form.querySelector('button[type="submit"]');
+  if (submitButton) submitButton.disabled = true;
+  try {
   const id = document.getElementById('c_id').value;
   const isEdit = !!id;
 
@@ -841,6 +861,10 @@ async function handleSaveCustomer(event) {
     await loadCustomers();
   } else {
     showAlert(res.error ? `${res.message || '儲存失敗'}: ${res.error}` : (res.message || '儲存失敗'), 'danger', 6000);
+  }
+  } finally {
+    form.dataset.isSubmitting = 'false';
+    if (submitButton) submitButton.disabled = false;
   }
 }
 
@@ -961,6 +985,12 @@ function openEditVendorModal(id) {
 
 async function handleSaveVendor(event) {
   event.preventDefault();
+  const form = event.currentTarget;
+  if (form.dataset.isSubmitting === 'true') return;
+  form.dataset.isSubmitting = 'true';
+  const submitButton = form.querySelector('button[type="submit"]');
+  if (submitButton) submitButton.disabled = true;
+  try {
   const id = document.getElementById('v_id').value;
   const isEdit = !!id;
 
@@ -990,6 +1020,10 @@ async function handleSaveVendor(event) {
     await loadVendors();
   } else {
     showAlert(res.message || '儲存失敗', 'danger');
+  }
+  } finally {
+    form.dataset.isSubmitting = 'false';
+    if (submitButton) submitButton.disabled = false;
   }
 }
 
@@ -1196,6 +1230,12 @@ function openEditProductModal(id) {
 
 async function handleSaveProduct(event) {
   event.preventDefault();
+  const form = event.currentTarget;
+  if (form.dataset.isSubmitting === 'true') return;
+  form.dataset.isSubmitting = 'true';
+  const submitButton = form.querySelector('button[type="submit"]');
+  if (submitButton) submitButton.disabled = true;
+  try {
   const id = document.getElementById('p_id').value;
   const isEdit = !!id;
 
@@ -1236,6 +1276,10 @@ async function handleSaveProduct(event) {
     await loadProducts();
   } else {
     showAlert(res.error ? `${res.message || '儲存失敗'} (${res.error})` : (res.message || '儲存失敗'), 'danger', 6000);
+  }
+  } finally {
+    form.dataset.isSubmitting = 'false';
+    if (submitButton) submitButton.disabled = false;
   }
 }
 

@@ -8,12 +8,17 @@ import re
 import math
 import json
 import time
+import secrets
+import base64
+import hashlib
+import hmac
+from uuid import uuid4
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 from contextlib import contextmanager
 
-from fastapi import FastAPI, HTTPException, Query, Request, status
+from fastapi import FastAPI, Header, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -32,6 +37,13 @@ POSTGRES_URL = (
     os.getenv("POSTGRES_URL_NON_POOLING") or 
     ""
 )
+INIT_DB_TOKEN = os.getenv("INIT_DB_TOKEN", "")
+AUTH_SECRET = os.getenv("AUTH_SECRET", "")
+ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+    if origin.strip()
+]
 
 DEFAULT_PAGE_SIZE = 10
 MAX_PAGE_SIZE = 100
@@ -48,8 +60,9 @@ app = FastAPI(
 # 支援跨來源資源共享 (CORS)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    # Cookie/Authorization credential requests cannot safely use a wildcard origin.
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -59,6 +72,58 @@ app.add_middleware(
 # -----------------------------------------------------------------------------
 DB_POOL: Optional[pool.SimpleConnectionPool] = None
 IS_INITIALIZED = False
+
+PUBLIC_API_PATHS = {"/api/health", "/api/auth/login", "/api/init-db", "/api/docs", "/api/openapi.json"}
+API_MENU_PATHS = {
+    "/api/customers": "customers", "/api/vendors": "vendors", "/api/products": "products",
+    "/api/quotations": "quotations", "/api/transactions": "transactions", "/api/companies": "company",
+    "/api/company": "company", "/api/users": "users", "/api/audit-logs": "audit_logs",
+    "/api/audit_logs": "audit_logs", "/api/metrics": "dashboard",
+}
+
+
+def createAccessToken(user: Dict[str, Any]) -> str:
+    """建立短效、簽章驗證的 API 存取權杖，避免信任前端 localStorage 的角色資料。"""
+    expiresAt = int(time.time()) + 8 * 60 * 60
+    payload = json.dumps({
+        "sub": user["id"], "role": user["role"],
+        "menus": user.get("allowed_menus", "").split(","), "exp": expiresAt
+    }, separators=(",", ":")).encode("utf-8")
+    encodedPayload = base64.urlsafe_b64encode(payload).rstrip(b"=")
+    signature = hmac.new(AUTH_SECRET.encode("utf-8"), encodedPayload, hashlib.sha256).digest()
+    return f"{encodedPayload.decode('ascii')}.{base64.urlsafe_b64encode(signature).rstrip(b'=').decode('ascii')}"
+
+
+def verifyAccessToken(token: str) -> Optional[Dict[str, Any]]:
+    try:
+        encodedPayload, encodedSignature = token.split(".", 1)
+        expected = hmac.new(AUTH_SECRET.encode("utf-8"), encodedPayload.encode("ascii"), hashlib.sha256).digest()
+        supplied = base64.urlsafe_b64decode(encodedSignature + "=" * (-len(encodedSignature) % 4))
+        if not hmac.compare_digest(expected, supplied):
+            return None
+        payload = json.loads(base64.urlsafe_b64decode(encodedPayload + "=" * (-len(encodedPayload) % 4)))
+        return payload if payload.get("exp", 0) > time.time() else None
+    except (ValueError, TypeError, json.JSONDecodeError):
+        return None
+
+
+@app.middleware("http")
+async def enforceApiAuthorization(request: Request, callNext):
+    path = request.url.path
+    if not path.startswith("/api/") or request.method == "OPTIONS" or path in PUBLIC_API_PATHS:
+        return await callNext(request)
+    if not AUTH_SECRET:
+        return createApiResponse(False, message="伺服器未設定 AUTH_SECRET", statusCode=status.HTTP_503_SERVICE_UNAVAILABLE)
+    authorization = request.headers.get("Authorization", "")
+    token = authorization.removeprefix("Bearer ").strip()
+    claims = verifyAccessToken(token) if token else None
+    if not claims:
+        return createApiResponse(False, message="登入已失效或未提供有效憑證", statusCode=status.HTTP_401_UNAUTHORIZED)
+    requiredMenu = next((menu for prefix, menu in API_MENU_PATHS.items() if path.startswith(prefix)), None)
+    if requiredMenu and claims.get("role") != "ADMIN" and requiredMenu not in claims.get("menus", []):
+        return createApiResponse(False, message="您沒有存取此功能的權限", statusCode=status.HTTP_403_FORBIDDEN)
+    request.state.user = claims
+    return await callNext(request)
 
 def getDbPool() -> Optional[pool.SimpleConnectionPool]:
     """獲取或初始化資料庫連線池 (Lazy initialization)"""
@@ -104,6 +169,11 @@ def getDbConnection():
                 sslmode="require" if "vercel-storage" in POSTGRES_URL or "neon.tech" in POSTGRES_URL else "prefer"
             )
         yield conn
+    except Exception:
+        # 同一筆寫入流程任一步失敗都必須復原，避免 UI 顯示失敗但資料已部分寫入。
+        if conn and not conn.closed:
+            conn.rollback()
+        raise
     finally:
         if conn:
             if connectionPool:
@@ -149,8 +219,8 @@ def createApiResponse(
 # 4. Pydantic 模型定義 (DATA TRANSFER OBJECTS)
 # -----------------------------------------------------------------------------
 class LoginInput(BaseModel):
-    username: str
-    password: Optional[str] = ""
+    username: str = Field(..., min_length=1, max_length=50)
+    password: str = Field(..., min_length=1, max_length=255)
 
 class CustomerInput(BaseModel):
     customerCode: Optional[str] = Field(None, max_length=50)
@@ -629,14 +699,28 @@ def executeInitDb() -> bool:
     with getDbConnection() as conn:
         with conn.cursor() as cur:
             cur.execute(schemaSql)
+            cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_customers_tax_id_not_blank ON customers (tax_id) WHERE tax_id IS NOT NULL AND btrim(tax_id) <> '';")
+            cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_vendors_tax_id_not_blank ON vendors (tax_id) WHERE tax_id IS NOT NULL AND btrim(tax_id) <> '';")
+            cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_products_model_not_blank ON products (model) WHERE model IS NOT NULL AND btrim(model) <> '';")
         conn.commit()
     return True
 
 
-@app.get("/api/init-db")
 @app.post("/api/init-db")
-def initDatabase():
+def initDatabase(initToken: Optional[str] = Header(None, alias="X-Init-Token")):
     """手動或自動觸發資料庫結構初始化"""
+    if not INIT_DB_TOKEN:
+        return createApiResponse(
+            isSuccess=False,
+            message="伺服器未設定 INIT_DB_TOKEN，已拒絕資料庫初始化請求",
+            statusCode=status.HTTP_503_SERVICE_UNAVAILABLE
+        )
+    if not initToken or not secrets.compare_digest(initToken, INIT_DB_TOKEN):
+        return createApiResponse(
+            isSuccess=False,
+            message="資料庫初始化憑證無效",
+            statusCode=status.HTTP_403_FORBIDDEN
+        )
     try:
         executeInitDb()
         return createApiResponse(
@@ -686,6 +770,8 @@ def checkHealth():
 @app.post("/api/auth/login")
 def loginUser(payload: LoginInput):
     autoEnsureSchema()
+    if not AUTH_SECRET:
+        return createApiResponse(isSuccess=False, message="伺服器未設定 AUTH_SECRET", statusCode=status.HTTP_503_SERVICE_UNAVAILABLE)
     try:
         with getDbConnection() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -710,14 +796,12 @@ def loginUser(payload: LoginInput):
                 statusCode=status.HTTP_403_FORBIDDEN
             )
 
-        # 密碼比對 (若資料庫有密碼則比對，否則預設通過)
-        if user.get("password") and payload.password:
-            if user["password"] != payload.password.strip():
-                return createApiResponse(
-                    isSuccess=False,
-                    message="登入密碼不正確，請重新輸入",
-                    statusCode=status.HTTP_401_UNAUTHORIZED
-                )
+        if not user.get("password") or not secrets.compare_digest(user["password"], payload.password.strip()):
+            return createApiResponse(
+                isSuccess=False,
+                message="登入密碼不正確，請重新輸入",
+                statusCode=status.HTTP_401_UNAUTHORIZED
+            )
 
         userResp = {
             "id": user["id"],
@@ -730,6 +814,7 @@ def loginUser(payload: LoginInput):
             "allowedMenus": user["allowed_menus"].split(",") if user.get("allowed_menus") else [],
             "status": user["status"]
         }
+        userResp["accessToken"] = createAccessToken(user)
 
         return createApiResponse(
             isSuccess=True,
@@ -814,6 +899,11 @@ def createCustomer(payload: CustomerInput):
     try:
         with getDbConnection() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                taxId = payload.taxId.strip() if payload.taxId and payload.taxId.strip() else None
+                if taxId:
+                    cur.execute("SELECT id FROM customers WHERE tax_id = %s;", (taxId,))
+                    if cur.fetchone():
+                        return createApiResponse(isSuccess=False, message="此客戶統編已存在", statusCode=status.HTTP_409_CONFLICT)
                 if payload.customerCode and payload.customerCode.strip():
                     code = payload.customerCode.strip()
                 else:
@@ -836,7 +926,7 @@ def createCustomer(payload: CustomerInput):
                               industry, notes, created_at as "createdAt";
                 """, (
                     code, payload.customerName.strip(),
-                    payload.taxId.strip() if payload.taxId and payload.taxId.strip() else None,
+                    taxId,
                     payload.contactPerson.strip() if payload.contactPerson and payload.contactPerson.strip() else None,
                     payload.email.strip() if payload.email and payload.email.strip() else None,
                     payload.phone.strip() if payload.phone and payload.phone.strip() else None,
@@ -852,6 +942,8 @@ def createCustomer(payload: CustomerInput):
             conn.commit()
 
         return createApiResponse(isSuccess=True, data=newCust, message="客戶建立成功", statusCode=201)
+    except psycopg2.IntegrityError as err:
+        return createApiResponse(isSuccess=False, message="客戶統編或編號已存在", errorMessage="請確認統編與客戶編號", statusCode=status.HTTP_409_CONFLICT)
     except Exception as err:
         return createApiResponse(isSuccess=False, message="建立客戶失敗", errorMessage=str(err), statusCode=500)
 
@@ -985,6 +1077,11 @@ def createVendor(payload: VendorInput):
     try:
         with getDbConnection() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                taxId = payload.taxId.strip() if payload.taxId and payload.taxId.strip() else None
+                if taxId:
+                    cur.execute("SELECT id FROM vendors WHERE tax_id = %s;", (taxId,))
+                    if cur.fetchone():
+                        return createApiResponse(isSuccess=False, message="此廠商統編已存在", statusCode=status.HTTP_409_CONFLICT)
                 if payload.vendorCode and payload.vendorCode.strip():
                     code = payload.vendorCode.strip()
                 else:
@@ -1006,7 +1103,7 @@ def createVendor(payload: VendorInput):
                               products_services as "productsServices", notes, created_at as "createdAt";
                 """, (
                     code, payload.vendorName.strip(),
-                    payload.taxId.strip() if payload.taxId and payload.taxId.strip() else None,
+                    taxId,
                     payload.contactPerson.strip() if payload.contactPerson and payload.contactPerson.strip() else None,
                     payload.phone.strip() if payload.phone and payload.phone.strip() else None,
                     payload.email.strip() if payload.email and payload.email.strip() else None,
@@ -1020,6 +1117,8 @@ def createVendor(payload: VendorInput):
             conn.commit()
 
         return createApiResponse(isSuccess=True, data=newVendor, message="廠商建立成功", statusCode=201)
+    except psycopg2.IntegrityError as err:
+        return createApiResponse(isSuccess=False, message="廠商統編或編號已存在", errorMessage="請確認統編與廠商編號", statusCode=status.HTTP_409_CONFLICT)
     except Exception as err:
         return createApiResponse(isSuccess=False, message="建立廠商失敗", errorMessage=str(err), statusCode=500)
 
@@ -1158,6 +1257,11 @@ def createProduct(payload: ProductInput):
     try:
         with getDbConnection() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                model = payload.model.strip() if payload.model and payload.model.strip() else None
+                if model:
+                    cur.execute("SELECT id FROM products WHERE model = %s;", (model,))
+                    if cur.fetchone():
+                        return createApiResponse(isSuccess=False, message="此產品型號已存在", statusCode=status.HTTP_409_CONFLICT)
                 if payload.productCode and payload.productCode.strip():
                     code = payload.productCode.strip()
                 else:
@@ -1184,7 +1288,7 @@ def createProduct(payload: ProductInput):
                     code, payload.productName.strip(),
                     payload.category.strip() if payload.category and payload.category.strip() else "一般商品",
                     payload.brand.strip() if payload.brand and payload.brand.strip() else None,
-                    payload.model.strip() if payload.model and payload.model.strip() else None,
+                    model,
                     payload.vendor.strip() if payload.vendor and payload.vendor.strip() else None,
                     payload.unit.strip() if payload.unit and payload.unit.strip() else "件",
                     float(payload.unitPrice),
@@ -1200,6 +1304,8 @@ def createProduct(payload: ProductInput):
             conn.commit()
 
         return createApiResponse(isSuccess=True, data=newProduct, message="產品建立成功", statusCode=201)
+    except psycopg2.IntegrityError as err:
+        return createApiResponse(isSuccess=False, message="產品型號或編號已存在", errorMessage="請確認產品型號與產品編號", statusCode=status.HTTP_409_CONFLICT)
     except Exception as err:
         return createApiResponse(isSuccess=False, message="建立產品失敗", errorMessage=str(err), statusCode=500)
 
@@ -1692,7 +1798,7 @@ def getTransactions(
 def createTransaction(payload: TransactionInput):
     autoEnsureSchema()
     try:
-        txNumber = payload.transactionNumber or f"TX-{date.today().strftime('%Y%m%d')}-{int(time.time()) % 10000:04d}"
+        txNumber = payload.transactionNumber or f"TX-{date.today().strftime('%Y%m%d')}-{uuid4().hex[:10].upper()}"
         creator = payload.createdBy or "系統使用者"
         updater = payload.updatedBy or creator
 
@@ -1762,7 +1868,7 @@ def convertQuotationToTransaction(quotationId: int):
 
                 cur.execute("UPDATE quotations SET status = 'ACCEPTED', updated_by = %s, updated_at = CURRENT_TIMESTAMP WHERE id = %s;", (operator, quotationId))
 
-                txNumber = f"TX-{date.today().strftime('%Y%m%d')}-{int(time.time()) % 10000:04d}"
+                txNumber = f"TX-{date.today().strftime('%Y%m%d')}-{uuid4().hex[:10].upper()}"
                 cur.execute("""
                     INSERT INTO transactions (
                         transaction_number, quotation_id, quotation_number, customer_name,
@@ -2000,7 +2106,7 @@ def listUsers():
     try:
         with getDbConnection() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("SELECT id, name, username, password, department, phone, email, role, allowed_menus, status, created_at, updated_at FROM users ORDER BY id ASC;")
+                cur.execute("SELECT id, name, username, department, phone, email, role, allowed_menus, status, created_at, updated_at FROM users ORDER BY id ASC;")
                 rows = cur.fetchall()
 
         usersList = []
@@ -2009,7 +2115,6 @@ def listUsers():
                 "id": r["id"],
                 "name": r["name"],
                 "username": r["username"],
-                "password": r["password"],
                 "department": r["department"],
                 "phone": r["phone"],
                 "email": r["email"],
