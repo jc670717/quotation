@@ -1755,6 +1755,11 @@ async function convertToTransaction(quotationId) {
   const q = appState.quotations.find(item => item.id === quotationId);
   const qNum = q ? q.quotationNumber : `ID #${quotationId}`;
 
+  const isConfirmed = window.confirm(
+    `確定要將報價單「${qNum}」轉為正式交易嗎？\n\n轉換後會建立交易單，並將報價單狀態更新為「已核准」。`
+  );
+  if (!isConfirmed) return;
+
   const res = await fetchApi(`/api/transactions/from-quotation/${quotationId}`, {
     method: 'POST',
     body: JSON.stringify({ operator: appState.currentUser.name })

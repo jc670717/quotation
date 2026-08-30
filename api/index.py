@@ -1911,6 +1911,14 @@ def convertQuotationToTransaction(quotationId: int):
                 if not q:
                     return createApiResponse(isSuccess=False, message="找不到指定的報價單", statusCode=404)
 
+                cur.execute("SELECT id FROM transactions WHERE quotation_id = %s LIMIT 1;", (quotationId,))
+                if cur.fetchone():
+                    return createApiResponse(
+                        isSuccess=False,
+                        message="此報價單已轉為交易，請至交易管理查看",
+                        statusCode=status.HTTP_409_CONFLICT
+                    )
+
                 cur.execute("""
                     SELECT qi.quantity, COALESCE(p.cost_price, 0.00) as cost_price
                     FROM quotation_items qi
