@@ -890,6 +890,26 @@ function devApiPlugin(): Plugin {
 
         res.setHeader('Content-Type', 'application/json');
 
+        // Mock 回應沿用正式 API 信封，讓本機測試能及早發現契約落差。
+        const originalEnd = res.end.bind(res);
+        res.end = ((chunk?: any, ...args: any[]) => {
+          if (typeof chunk === 'string') {
+            try {
+              const payload = JSON.parse(chunk);
+              if (payload && typeof payload === 'object' && typeof payload.success === 'boolean') {
+                payload.data ??= null;
+                payload.message ??= '';
+                payload.error ??= null;
+                payload.pagination ??= null;
+                return originalEnd(JSON.stringify(payload), ...args);
+              }
+            } catch {
+              // 非 JSON 回應維持原樣，避免遮蔽開發伺服器本身的錯誤。
+            }
+          }
+          return originalEnd(chunk, ...args);
+        }) as typeof res.end;
+
         const getBody = () => new Promise<any>((resolve) => {
           let body = '';
           req.on('data', chunk => { body += chunk; });
@@ -960,6 +980,9 @@ function devApiPlugin(): Plugin {
               closedProfit,
               closedMargin,
               statusCounts, // 只包含 > 0 或全狀態，由前端進一步依 >0 渲染
+              customersCount: customers.length,
+              productsCount: products.length,
+              transactionsCount: transactions.length,
               totalCustomers: customers.length,
               totalVendors: vendors.length,
               totalProducts: products.length,
@@ -1048,7 +1071,7 @@ function devApiPlugin(): Plugin {
               success: true,
               data: filtered,
               message: '成功取得廠商清單',
-              pagination: { totalRecords: filtered.length }
+              pagination: { page: 1, limit: filtered.length, total: filtered.length, totalPages: 1, hasNext: false, hasPrev: false }
             }));
             return;
           }
@@ -1087,7 +1110,7 @@ function devApiPlugin(): Plugin {
         // ==========================================
         // AUDIT LOGS API (/api/audit-logs)
         // ==========================================
-        if (url.startsWith('/api/audit-logs')) {
+        if (url.startsWith('/api/audit-logs') || url.startsWith('/api/audit_logs')) {
           const parsedUrl = new URL(url, 'http://localhost:3000');
           const search = (parsedUrl.searchParams.get('search') || '').toLowerCase().trim();
           const moduleFilter = parsedUrl.searchParams.get('module') || '';
@@ -1109,7 +1132,7 @@ function devApiPlugin(): Plugin {
             success: true,
             data: filtered,
             message: '成功取得修改歷程紀錄',
-            pagination: { totalRecords: filtered.length }
+            pagination: { page: 1, limit: filtered.length, total: filtered.length, totalPages: 1, hasNext: false, hasPrev: false }
           }));
           return;
         }
@@ -1192,7 +1215,7 @@ function devApiPlugin(): Plugin {
               success: true,
               data: filtered,
               message: '成功取得客戶清單',
-              pagination: { totalRecords: filtered.length }
+              pagination: { page: 1, limit: filtered.length, total: filtered.length, totalPages: 1, hasNext: false, hasPrev: false }
             }));
             return;
           }
@@ -1315,7 +1338,7 @@ function devApiPlugin(): Plugin {
               success: true,
               data: filtered,
               message: '成功取得產品清單',
-              pagination: { totalRecords: filtered.length }
+              pagination: { page: 1, limit: filtered.length, total: filtered.length, totalPages: 1, hasNext: false, hasPrev: false }
             }));
             return;
           }
@@ -1519,7 +1542,7 @@ function devApiPlugin(): Plugin {
               success: true,
               data: filtered,
               message: '成功取得交易清單',
-              pagination: { totalRecords: filtered.length }
+              pagination: { page: 1, limit: filtered.length, total: filtered.length, totalPages: 1, hasNext: false, hasPrev: false }
             }));
             return;
           }
@@ -1576,9 +1599,9 @@ function devApiPlugin(): Plugin {
         if (url.startsWith('/api/quotations') && req.method === 'GET' && !url.match(/\/api\/quotations\/\d+/)) {
           const parsedUrl = new URL(url, 'http://localhost:3000');
           const page = parseInt(parsedUrl.searchParams.get('page') || '1', 10);
-          const pageSize = parseInt(parsedUrl.searchParams.get('pageSize') || '10', 10);
+          const pageSize = parseInt(parsedUrl.searchParams.get('limit') || parsedUrl.searchParams.get('pageSize') || '10', 10);
           const search = (parsedUrl.searchParams.get('search') || '').toLowerCase().trim();
-          const statusFilter = parsedUrl.searchParams.get('statusFilter') || '';
+          const statusFilter = parsedUrl.searchParams.get('status') || parsedUrl.searchParams.get('statusFilter') || '';
 
           let filtered = quotations.filter((q) => {
             let isMatch = true;
@@ -1600,7 +1623,8 @@ function devApiPlugin(): Plugin {
           const totalRecords = filtered.length;
           const totalPages = Math.ceil(totalRecords / pageSize);
           const offset = (page - 1) * pageSize;
-          const paginatedData = filtered.slice(offset, offset + pageSize);
+          // 正式清單 API 不含 items；編輯或預覽必須改用 GET /api/quotations/{id}。
+          const paginatedData = filtered.slice(offset, offset + pageSize).map(({ items, ...quotation }) => quotation);
 
           res.end(JSON.stringify({
             success: true,
@@ -1608,12 +1632,12 @@ function devApiPlugin(): Plugin {
             message: '成功取得報價單清單',
             error: null,
             pagination: {
-              currentPage: page,
-              pageSize,
-              totalRecords,
+              page,
+              limit: pageSize,
+              total: totalRecords,
               totalPages,
-              hasNextPage: page < totalPages,
-              hasPrevPage: page > 1
+              hasNext: page < totalPages,
+              hasPrev: page > 1
             }
           }));
           return;
@@ -1899,6 +1923,17 @@ function devApiPlugin(): Plugin {
           const parsedUrl = new URL(url, 'http://localhost:3000');
           const idMatch = url.match(/\/api\/companies\/(\d+)/);
           const compId = idMatch ? parseInt(idMatch[1], 10) : null;
+
+          if (url === '/api/company' && req.method === 'GET') {
+            const company = companies.find(c => c.isDefault) || companies[0];
+            if (!company) {
+              res.statusCode = 404;
+              res.end(JSON.stringify({ success: false, message: '尚未建立公司資料' }));
+              return;
+            }
+            res.end(JSON.stringify({ success: true, data: company, message: '取得公司基本資料成功' }));
+            return;
+          }
 
           if (compId && req.method === 'GET') {
             const comp = companies.find(c => c.id === compId);

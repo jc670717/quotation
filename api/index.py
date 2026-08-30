@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional
 from contextlib import contextmanager
 
 from fastapi import FastAPI, Header, HTTPException, Query, Request, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -271,6 +272,27 @@ def createApiResponse(
     return JSONResponse(status_code=statusCode, content=jsonable_encoder(content))
 
 
+@app.exception_handler(RequestValidationError)
+async def handleRequestValidationError(_: Request, exc: RequestValidationError):
+    """將 FastAPI 預設 detail 格式轉為系統統一錯誤信封。"""
+    fields = {
+        ".".join(str(part) for part in error.get("loc", [])[1:]): error.get("msg", "欄位格式不正確")
+        for error in exc.errors()
+    }
+    return createApiResponse(
+        isSuccess=False,
+        message="欄位資料不正確",
+        errorMessage=json.dumps(fields, ensure_ascii=False),
+        statusCode=status.HTTP_422_UNPROCESSABLE_ENTITY
+    )
+
+
+@app.exception_handler(HTTPException)
+async def handleHttpException(_: Request, exc: HTTPException):
+    detail = exc.detail if isinstance(exc.detail, str) else json.dumps(exc.detail, ensure_ascii=False)
+    return createApiResponse(isSuccess=False, message=detail, errorMessage=detail, statusCode=exc.status_code)
+
+
 # -----------------------------------------------------------------------------
 # 4. Pydantic 模型定義 (DATA TRANSFER OBJECTS)
 # -----------------------------------------------------------------------------
@@ -508,6 +530,7 @@ def executeInitDb() -> bool:
         brand VARCHAR(100),
         model VARCHAR(100),
         vendor VARCHAR(255),
+        vendor_id INTEGER REFERENCES vendors(id) ON DELETE SET NULL,
         unit VARCHAR(20) DEFAULT '件',
         unit_price NUMERIC(12, 2) NOT NULL DEFAULT 0.00 CHECK (unit_price >= 0),
         cost_price NUMERIC(12, 2) DEFAULT 0.00 CHECK (cost_price >= 0),
@@ -694,6 +717,7 @@ def executeInitDb() -> bool:
     ALTER TABLE products ADD COLUMN IF NOT EXISTS brand VARCHAR(100);
     ALTER TABLE products ADD COLUMN IF NOT EXISTS model VARCHAR(100);
     ALTER TABLE products ADD COLUMN IF NOT EXISTS vendor VARCHAR(255);
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS vendor_id INTEGER REFERENCES vendors(id) ON DELETE SET NULL;
     ALTER TABLE products ADD COLUMN IF NOT EXISTS image TEXT;
     ALTER TABLE products ADD COLUMN IF NOT EXISTS created_by VARCHAR(100);
     ALTER TABLE products ADD COLUMN IF NOT EXISTS updated_by VARCHAR(100);
@@ -949,6 +973,28 @@ def getCustomers(
         return createApiResponse(isSuccess=False, message="取得客戶清單失敗", errorMessage=str(err), statusCode=500)
 
 
+@app.get("/api/customers/{customerId}")
+def getCustomerById(customerId: int):
+    autoEnsureSchema()
+    try:
+        with getDbConnection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT id, customer_code as "customerCode", customer_name as "customerName",
+                           tax_id as "taxId", contact_person as "contactPerson", email, phone, address,
+                           shipping_address as "shippingAddress", payment_terms as "paymentTerms",
+                           industry, notes, created_by as "createdBy", updated_by as "updatedBy",
+                           created_at::text as "createdAt", updated_at::text as "updatedAt"
+                    FROM customers WHERE id = %s;
+                """, (customerId,))
+                customer = cur.fetchone()
+        if not customer:
+            return createApiResponse(isSuccess=False, message="找不到該客戶", statusCode=404)
+        return createApiResponse(isSuccess=True, data=customer, message="成功取得客戶資料")
+    except Exception as err:
+        return createApiResponse(isSuccess=False, message="取得客戶資料失敗", errorMessage=str(err), statusCode=500)
+
+
 @app.post("/api/customers")
 def createCustomer(payload: CustomerInput):
     autoEnsureSchema()
@@ -1010,6 +1056,11 @@ def updateCustomer(customerId: int, payload: CustomerInput):
     try:
         with getDbConnection() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                taxId = payload.taxId.strip() if payload.taxId and payload.taxId.strip() else None
+                if taxId:
+                    cur.execute("SELECT id FROM customers WHERE tax_id = %s AND id != %s;", (taxId, customerId))
+                    if cur.fetchone():
+                        return createApiResponse(isSuccess=False, message="此客戶統編已存在", statusCode=status.HTTP_409_CONFLICT)
                 cur.execute("""
                     UPDATE customers
                     SET customer_name = %s,
@@ -1031,7 +1082,7 @@ def updateCustomer(customerId: int, payload: CustomerInput):
                               industry, notes, updated_at as "updatedAt";
                 """, (
                     payload.customerName.strip(),
-                    payload.taxId.strip() if payload.taxId else None,
+                    taxId,
                     payload.contactPerson.strip() if payload.contactPerson else None,
                     payload.email.strip() if payload.email else None,
                     payload.phone.strip() if payload.phone else None,
@@ -1127,6 +1178,27 @@ def getVendors(
         return createApiResponse(isSuccess=False, message="取得廠商清單失敗", errorMessage=str(err), statusCode=500)
 
 
+@app.get("/api/vendors/{vendorId}")
+def getVendorById(vendorId: int):
+    autoEnsureSchema()
+    try:
+        with getDbConnection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT id, vendor_code as "vendorCode", vendor_name as "vendorName",
+                           tax_id as "taxId", contact_person as "contactPerson", phone, email, address,
+                           products_services as "productsServices", notes, created_by as "createdBy", updated_by as "updatedBy",
+                           created_at::text as "createdAt", updated_at::text as "updatedAt"
+                    FROM vendors WHERE id = %s;
+                """, (vendorId,))
+                vendor = cur.fetchone()
+        if not vendor:
+            return createApiResponse(isSuccess=False, message="找不到該廠商", statusCode=404)
+        return createApiResponse(isSuccess=True, data=vendor, message="成功取得廠商資料")
+    except Exception as err:
+        return createApiResponse(isSuccess=False, message="取得廠商資料失敗", errorMessage=str(err), statusCode=500)
+
+
 @app.post("/api/vendors")
 def createVendor(payload: VendorInput):
     autoEnsureSchema()
@@ -1185,6 +1257,11 @@ def updateVendor(vendorId: int, payload: VendorInput):
     try:
         with getDbConnection() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                taxId = payload.taxId.strip() if payload.taxId and payload.taxId.strip() else None
+                if taxId:
+                    cur.execute("SELECT id FROM vendors WHERE tax_id = %s AND id != %s;", (taxId, vendorId))
+                    if cur.fetchone():
+                        return createApiResponse(isSuccess=False, message="此廠商統編已存在", statusCode=status.HTTP_409_CONFLICT)
                 cur.execute("""
                     UPDATE vendors
                     SET vendor_name = %s,
@@ -1203,7 +1280,7 @@ def updateVendor(vendorId: int, payload: VendorInput):
                               products_services as "productsServices", notes, updated_at as "updatedAt";
                 """, (
                     payload.vendorName.strip(),
-                    payload.taxId.strip() if payload.taxId else None,
+                    taxId,
                     payload.contactPerson.strip() if payload.contactPerson else None,
                     payload.phone.strip() if payload.phone else None,
                     payload.email.strip() if payload.email else None,
@@ -1276,7 +1353,7 @@ def getProducts(
                 offset = (page - 1) * limit
                 querySql = f"""
                     SELECT id, product_code as "productCode", product_name as "productName",
-                           category, brand, model, vendor, unit,
+                           category, brand, model, vendor, vendor_id as "vendorId", unit,
                            unit_price::float as "unitPrice", cost_price::float as "costPrice",
                            stock_quantity as "stockQuantity", image, description, status,
                            created_by as "createdBy", updated_by as "updatedBy",
@@ -1307,6 +1384,29 @@ def getProducts(
         return createApiResponse(isSuccess=False, message="取得產品清單失敗", errorMessage=str(err), statusCode=500)
 
 
+@app.get("/api/products/{productId}")
+def getProductById(productId: int):
+    autoEnsureSchema()
+    try:
+        with getDbConnection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT id, product_code as "productCode", product_name as "productName",
+                           category, brand, model, vendor, vendor_id as "vendorId", unit,
+                           unit_price::float as "unitPrice", cost_price::float as "costPrice",
+                           stock_quantity as "stockQuantity", image, description, status,
+                           created_by as "createdBy", updated_by as "updatedBy",
+                           created_at::text as "createdAt", updated_at::text as "updatedAt"
+                    FROM products WHERE id = %s;
+                """, (productId,))
+                product = cur.fetchone()
+        if not product:
+            return createApiResponse(isSuccess=False, message="找不到該產品", statusCode=404)
+        return createApiResponse(isSuccess=True, data=product, message="成功取得產品資料")
+    except Exception as err:
+        return createApiResponse(isSuccess=False, message="取得產品資料失敗", errorMessage=str(err), statusCode=500)
+
+
 @app.post("/api/products")
 def createProduct(payload: ProductInput):
     autoEnsureSchema()
@@ -1332,12 +1432,12 @@ def createProduct(payload: ProductInput):
                 img = (payload.image or payload.imageUrl or "").strip() or None
                 cur.execute("""
                     INSERT INTO products (
-                        product_code, product_name, category, brand, model, vendor, unit,
+                        product_code, product_name, category, brand, model, vendor, vendor_id, unit,
                         unit_price, cost_price, stock_quantity, image, description, status,
                         created_by, updated_by
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id, product_code as "productCode", product_name as "productName",
-                              category, brand, model, vendor, unit,
+                              category, brand, model, vendor, vendor_id as "vendorId", unit,
                               unit_price::float as "unitPrice", cost_price::float as "costPrice",
                               stock_quantity as "stockQuantity", image, description, status, created_at as "createdAt";
                 """, (
@@ -1346,6 +1446,7 @@ def createProduct(payload: ProductInput):
                     payload.brand.strip() if payload.brand and payload.brand.strip() else None,
                     model,
                     payload.vendor.strip() if payload.vendor and payload.vendor.strip() else None,
+                    payload.vendorId,
                     payload.unit.strip() if payload.unit and payload.unit.strip() else "件",
                     float(payload.unitPrice),
                     float(payload.costPrice or 0),
@@ -1372,6 +1473,11 @@ def updateProduct(productId: int, payload: ProductInput):
     try:
         with getDbConnection() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                model = payload.model.strip() if payload.model and payload.model.strip() else None
+                if model:
+                    cur.execute("SELECT id FROM products WHERE model = %s AND id != %s;", (model, productId))
+                    if cur.fetchone():
+                        return createApiResponse(isSuccess=False, message="此產品型號已存在", statusCode=status.HTTP_409_CONFLICT)
                 img = (payload.image or payload.imageUrl or "").strip() or None
                 cur.execute("""
                     UPDATE products
@@ -1380,6 +1486,7 @@ def updateProduct(productId: int, payload: ProductInput):
                         brand = %s,
                         model = %s,
                         vendor = %s,
+                        vendor_id = %s,
                         unit = %s,
                         unit_price = %s,
                         cost_price = %s,
@@ -1391,15 +1498,16 @@ def updateProduct(productId: int, payload: ProductInput):
                         updated_at = CURRENT_TIMESTAMP
                     WHERE id = %s
                     RETURNING id, product_code as "productCode", product_name as "productName",
-                              category, brand, model, vendor, unit,
+                              category, brand, model, vendor, vendor_id as "vendorId", unit,
                               unit_price::float as "unitPrice", cost_price::float as "costPrice",
                               stock_quantity as "stockQuantity", image, description, status, updated_at as "updatedAt";
                 """, (
                     payload.productName.strip(),
                     payload.category.strip() if payload.category else "一般商品",
                     payload.brand.strip() if payload.brand else None,
-                    payload.model.strip() if payload.model else None,
+                    model,
                     payload.vendor.strip() if payload.vendor else None,
+                    payload.vendorId,
                     payload.unit.strip() if payload.unit else "件",
                     float(payload.unitPrice),
                     float(payload.costPrice or 0),
@@ -1444,12 +1552,17 @@ def deleteProduct(productId: int):
 def getQuotations(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
+    pageSize: Optional[int] = Query(None, ge=1, le=100),
     search: Optional[str] = Query(None),
-    statusFilter: Optional[str] = Query(None, alias="status")
+    statusFilter: Optional[str] = Query(None, alias="status"),
+    legacyStatusFilter: Optional[str] = Query(None, alias="statusFilter")
 ):
     autoEnsureSchema()
     try:
-        offset = (page - 1) * limit
+        # `limit` / `status` 為正式契約；保留舊參數避免既有書籤或外部整合中斷。
+        effectiveLimit = pageSize or limit
+        effectiveStatus = statusFilter or legacyStatusFilter
+        offset = (page - 1) * effectiveLimit
         conditions = []
         params: List[Any] = []
 
@@ -1458,9 +1571,9 @@ def getQuotations(
             conditions.append("(quotation_number ILIKE %s OR customer_name ILIKE %s OR customer_tax_id ILIKE %s OR customer_contact_person ILIKE %s OR sales_rep ILIKE %s)")
             params.extend([s, s, s, s, s])
 
-        if statusFilter and statusFilter.strip():
+        if effectiveStatus and effectiveStatus.strip():
             conditions.append("status = %s")
-            params.append(statusFilter.strip().upper())
+            params.append(effectiveStatus.strip().upper())
 
         whereClause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
@@ -1494,17 +1607,17 @@ def getQuotations(
                     ORDER BY id DESC
                     LIMIT %s OFFSET %s;
                 """
-                cur.execute(dataQuery, tuple(params + [limit, offset]))
+                cur.execute(dataQuery, tuple(params + [effectiveLimit, offset]))
                 rows = cur.fetchall()
 
-        totalPages = math.ceil(totalRecords / limit) if totalRecords > 0 else 1
+        totalPages = math.ceil(totalRecords / effectiveLimit) if totalRecords > 0 else 1
         return createApiResponse(
             isSuccess=True,
             data=rows,
             message="成功取得報價單清單",
             pagination={
                 "page": page,
-                "limit": limit,
+                "limit": effectiveLimit,
                 "total": totalRecords,
                 "totalPages": totalPages,
                 "hasNext": page < totalPages,
@@ -1850,6 +1963,38 @@ def getTransactions(
         return createApiResponse(isSuccess=False, message="取得交易清單失敗", errorMessage=str(err), statusCode=500)
 
 
+@app.get("/api/transactions/{txId}")
+def getTransactionById(txId: int):
+    autoEnsureSchema()
+    try:
+        with getDbConnection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT id, transaction_number as "transactionNumber", quotation_id as "quotationId",
+                           quotation_number as "quotationNumber", customer_name as "customerName",
+                           customer_email as "customerEmail", transaction_date::text as "transactionDate",
+                           total_amount::float as "totalAmount", COALESCE(cost_price, 0.00)::float as "costPrice",
+                           COALESCE(paid_amount, 0.00)::float as "paidAmount", payment_method as "paymentMethod",
+                           payment_status as "paymentStatus", fulfillment_status as "fulfillmentStatus", notes,
+                           created_by as "createdBy", updated_by as "updatedBy",
+                           created_at::text as "createdAt", updated_at::text as "updatedAt"
+                    FROM transactions WHERE id = %s;
+                """, (txId,))
+                transaction = cur.fetchone()
+                if not transaction:
+                    return createApiResponse(isSuccess=False, message="找不到該交易記錄", statusCode=404)
+                cur.execute("""
+                    SELECT id, invoice_number as "invoiceNumber", invoice_date::text as "invoiceDate",
+                           amount::float as "amount", status, notes, created_by as "createdBy",
+                           updated_by as "updatedBy", created_at::text as "createdAt", updated_at::text as "updatedAt"
+                    FROM transaction_invoices WHERE transaction_id = %s ORDER BY id ASC;
+                """, (txId,))
+                transaction["invoices"] = cur.fetchall()
+        return createApiResponse(isSuccess=True, data=transaction, message="成功取得交易資料")
+    except Exception as err:
+        return createApiResponse(isSuccess=False, message="取得交易資料失敗", errorMessage=str(err), statusCode=500)
+
+
 @app.post("/api/transactions")
 def createTransaction(payload: TransactionInput):
     autoEnsureSchema()
@@ -2040,6 +2185,30 @@ def listCompanies():
         return createApiResponse(isSuccess=True, data=rows, message="取得公司清單成功")
     except Exception as err:
         return createApiResponse(isSuccess=False, message="取得公司清單失敗", errorMessage=str(err), statusCode=500)
+
+
+@app.get("/api/companies/{companyId}")
+def getCompanyById(companyId: int):
+    autoEnsureSchema()
+    try:
+        with getDbConnection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT id, company_name as "companyName", tax_id as "taxId", phone, fax, address,
+                           email, website, bank_name as "bankName", bank_account as "bankAccount",
+                           bank_account_name as "bankAccountName", contact_person as "contactPerson",
+                           contact_phone as "contactPhone", contact_email as "contactEmail",
+                           is_default as "isDefault", logo_url as "logoUrl", default_terms as "defaultTerms",
+                           created_by as "createdBy", updated_by as "updatedBy",
+                           created_at::text as "createdAt", updated_at::text as "updatedAt"
+                    FROM companies WHERE id = %s;
+                """, (companyId,))
+                company = cur.fetchone()
+        if not company:
+            return createApiResponse(isSuccess=False, message="找不到該公司資料", statusCode=404)
+        return createApiResponse(isSuccess=True, data=company, message="成功取得公司資料")
+    except Exception as err:
+        return createApiResponse(isSuccess=False, message="取得公司資料失敗", errorMessage=str(err), statusCode=500)
 
 
 @app.get("/api/company")
