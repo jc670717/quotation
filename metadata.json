@@ -1,0 +1,6 @@
+{
+  "name": "Quotation Management System",
+  "description": "極簡 Web 版企業商務管理系統，包含客戶管理、產品管理、報價單管理與交易管理四大核心模組 (PostgreSQL + FastAPI + Bootstrap 5 + Vanilla JS)。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quotation Management System</title>
+  <meta name="description" content="極簡 Web 版報價單管理系統，支援報價單增刪查改、明細計算與 PostgreSQL 資料持久化。">
+  <meta property="og:title" content="Quotation Management System">
+  <meta property="og:description" content="極簡 Web 版報價單管理系統，支援報價單增刪查改、明細計算與 PostgreSQL 資料持久化。">
+  
+  <!-- 本地端 Bootstrap 5 與 自訂樣式 -->
+  <link rel="stylesheet" href="/css/bootstrap.min.css">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+  <!-- 手機版側邊欄背景遮罩 -->
+  <div id="sidebarBackdrop" class="sidebar-backdrop" onclick="toggleSidebar()"></div>
+
+  <!-- 主佈局容器 (Sidebar + Main) -->
+  <div class="app-layout">
+
+    <!-- 左側深色專業側邊欄 (Sidebar) -->
+    <aside id="appSidebar" class="app-sidebar no-print">
+      <!-- 品牌識別 Logo -->
+      <div class="p-4 d-flex align-items-center gap-3 border-bottom border-slate-800">
+        <div class="sidebar-brand-icon">Q</div>
+        <div>
+          <div class="text-white fw-bold fs-5 tracking-tight lh-1">Quotation Pro</div>
+          <small class="text-slate-400 font-monospace" style="font-size: 0.72rem;">極簡報價系統</small>
+        </div>
+      </div>
+
+      <!-- 導覽選單 -->
+      <nav class="mt-3 flex-grow-1">
+        <div class="nav-section-title">Main Menu</div>
+        
+        <a href="#" class="sidebar-nav-link active" onclick="loadQuotations(1); return false;">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
+          <span>儀表板</span>
+        </a>
+        
+        <a href="#" class="sidebar-nav-link" onclick="loadQuotations(1); return false;">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+          <span>報價單管理</span>
+        </a>
+        
+        <a href="#" class="sidebar-nav-link" onclick="showNotification('客戶管理資料已整合至報價明細'); return false;">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+          <span>客戶資料</span>
+        </a>
+      </nav>
+
+      <!-- 側邊欄底部管理者資訊 -->
+      <div class="p-3 border-top border-slate-800">
+        <div class="d-flex align-items-center p-2 rounded" style="background-color: #1e293b;">
+          <div class="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold me-2" style="width: 34px; height: 34px; background-color: #334155; font-size: 0.75rem;">
+            SA
+          </div>
+          <div class="overflow-hidden flex-grow-1">
+            <div class="text-white fw-semibold text-truncate" style="font-size: 0.82rem;">Senior Architect</div>
+            <div class="text-success d-flex align-items-center gap-1" style="font-size: 0.68rem;">
+              <span class="d-inline-block rounded-circle bg-success" style="width: 6px; height: 6px;"></span>
+              Postgres 連線中
+            </div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- 右側主內容區 (Main Content) -->
+    <div class="app-main">
+      
+      <!-- 頂部控制列 (Header) -->
+      <header class="app-header no-print">
+        <div class="d-flex align-items-center gap-3">
+          <!-- 手機版選單切換按鈕 -->
+          <button type="button" class="btn btn-outline-secondary d-lg-none btn-sm" onclick="toggleSidebar()" aria-label="切換選單">
+            ☰
+          </button>
+          <div class="d-flex align-items-center gap-2">
+            <h1 class="fs-5 fw-bold mb-0 text-dark">報價系統控制台</h1>
+            <span class="badge bg-success-subtle text-success border border-success-subtle fw-semibold px-2 py-1" style="font-size: 0.7rem; letter-spacing: 0.04em;">
+              Postgres Connected
+            </span>
+          </div>
+        </div>
+
+        <div class="d-flex align-items-center gap-2 gap-md-3">
+          <button type="button" id="initDbBtn" class="btn btn-outline-secondary btn-sm d-none d-md-inline-flex align-items-center" title="建立或修復資料庫結構">
+            ⚙️ 資料庫檢查
+          </button>
+          <button type="button" class="btn btn-primary btn-touch shadow-sm" onclick="openCreateQuotationModal()">
+            <span class="me-1">➕</span> 新增報價單
+          </button>
+        </div>
+      </header>
+
+      <!-- 主要內容區域 (Page Body) -->
+      <main class="p-3 p-md-4 p-xl-5 flex-grow-1">
+        
+        <!-- 訊息提示容器 -->
+        <div id="alertContainer" class="no-print mb-3"></div>
+
+        <!-- 四大核心 KPI 指標卡片 (Metric Cards Grid) -->
+        <div class="row g-3 g-md-4 mb-4 no-print">
+          <div class="col-12 col-sm-6 col-xl-3">
+            <div class="stat-card">
+              <div class="stat-title">本月總額 (Monthly Total)</div>
+              <div class="stat-value text-primary" id="kpiMonthlyTotal">NT$ 0</div>
+              <div class="mt-2 d-flex align-items-center text-success" style="font-size: 0.78rem; font-weight: 600;">
+                <span class="me-1">▲</span> +12.5% 自上月統計
+              </div>
+            </div>
+          </div>
+
+          <div class="col-12 col-sm-6 col-xl-3">
+            <div class="stat-card">
+              <div class="stat-title">待簽核 (Pending Review)</div>
+              <div class="stat-value" id="kpiPendingCount">0 筆</div>
+              <div class="mt-2 text-muted" style="font-size: 0.78rem;">
+                需在有效截止日前追蹤
+              </div>
+            </div>
+          </div>
+
+          <div class="col-12 col-sm-6 col-xl-3">
+            <div class="stat-card">
+              <div class="stat-title">平均單價 (Average Value)</div>
+              <div class="stat-value" id="kpiAverageValue">NT$ 0</div>
+              <div class="mt-2 text-muted" style="font-size: 0.78rem;">
+                高價值客戶占比 34%
+              </div>
+            </div>
+          </div>
+
+          <div class="col-12 col-sm-6 col-xl-3">
+            <div class="stat-card">
+              <div class="stat-title">簽約轉換率 (Conversion Rate)</div>
+              <div class="stat-value" id="kpiConversionRate">0.0%</div>
+              <div class="progress mt-2" style="height: 6px;">
+                <div id="kpiProgressBar" class="progress-bar bg-primary" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 頂部操作與篩選工具列 -->
+        <section class="quotation-card p-3 p-md-4 mb-4 no-print">
+          <div class="row g-3 align-items-center">
+            <!-- 搜尋列 -->
+            <div class="col-12 col-md-5">
+              <div class="input-group">
+                <span class="input-group-text bg-light border-end-0 text-muted">🔍</span>
+                <input type="text" id="searchInput" class="form-control border-start-0 ps-0" placeholder="搜尋報價單號、客戶名稱..." aria-label="搜尋報價單">
+                <button class="btn btn-secondary px-3" type="button" id="searchBtn">搜尋</button>
+              </div>
+            </div>
+
+            <!-- 狀態篩選 -->
+            <div class="col-12 col-sm-6 col-md-4">
+              <select id="statusFilter" class="form-select" aria-label="狀態篩選">
+                <option value="">全部狀態 (All Statuses)</option>
+                <option value="DRAFT">草稿 (DRAFT)</option>
+                <option value="SENT">審核中 / 已發送 (SENT)</option>
+                <option value="ACCEPTED">已簽約 / 已核准 (ACCEPTED)</option>
+                <option value="REJECTED">已拒絕 (REJECTED)</option>
+                <option value="EXPIRED">已過期 (EXPIRED)</option>
+              </select>
+            </div>
+
+            <!-- 快速重新整理 -->
+            <div class="col-12 col-sm-6 col-md-3 text-sm-end">
+              <button type="button" class="btn btn-outline-secondary w-100 btn-touch" onclick="loadQuotations(1)">
+                🔄 重新整理清單
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- 報價單資料列表 (Table Section) -->
+        <section class="quotation-card p-0 mb-4 overflow-hidden">
+          <div class="p-3 p-md-4 border-bottom d-flex justify-content-between align-items-center bg-light bg-opacity-50">
+            <div>
+              <h5 class="fw-bold mb-0 text-dark">最近期的報價單</h5>
+              <small class="text-muted" id="listSummaryText">載入中...</small>
+            </div>
+            <button type="button" class="btn btn-sm btn-link text-primary text-decoration-none fw-bold p-0" onclick="loadQuotations(1)">
+              查看全部
+            </button>
+          </div>
+
+          <!-- 載入中動畫 -->
+          <div id="loadingIndicator" class="text-center py-5 d-none">
+            <div class="spinner-border text-primary" role="status" style="width: 2.5rem; height: 2.5rem;">
+              <span class="visually-hidden">載入中...</span>
+            </div>
+            <p class="mt-2 text-muted small">正在載入報價單資料...</p>
+          </div>
+
+          <!-- 表格區塊 (RWD Table) -->
+          <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+              <thead class="quotation-table-header">
+                <tr>
+                  <th scope="col" style="min-width: 140px;">編號</th>
+                  <th scope="col" style="min-width: 180px;">客戶名稱</th>
+                  <th scope="col" style="min-width: 110px;">開立日期</th>
+                  <th scope="col" style="min-width: 110px;">有效截止</th>
+                  <th scope="col" class="text-center" style="min-width: 100px;">狀態</th>
+                  <th scope="col" class="text-end" style="min-width: 130px;">總計金額</th>
+                  <th scope="col" class="text-center no-print" style="min-width: 140px;">操作</th>
+                </tr>
+              </thead>
+              <tbody id="quotationTableBody">
+                <!-- 由 app.js 動態渲染 -->
+              </tbody>
+            </table>
+          </div>
+
+          <!-- 空白狀態 (Empty State) -->
+          <div id="emptyState" class="text-center py-5 d-none">
+            <div class="display-6 text-muted mb-2">📄</div>
+            <h6 class="fw-bold text-secondary">目前沒有符合條件的報價單</h6>
+            <p class="text-muted small mb-3">點擊右上角「新增報價單」按鈕建立第一筆資料</p>
+            <button type="button" class="btn btn-primary btn-touch" onclick="openCreateQuotationModal()">
+              立即建立報價單
+            </button>
+          </div>
+
+          <!-- 分頁導覽列 -->
+          <div class="p-3 border-top bg-light bg-opacity-25 no-print">
+            <nav id="paginationNav" aria-label="報價單分頁導覽"></nav>
+          </div>
+        </section>
+
+      </main>
+
+      <!-- 頁尾 (Semantic Footer) -->
+      <footer class="app-footer py-3 px-4 bg-white border-top text-muted small no-print d-flex flex-column flex-md-row justify-content-between align-items-center gap-2">
+        <div style="font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase;">
+          系統狀態: <span class="text-success fw-bold">線上</span> | 資料庫: <span class="fw-semibold">Postgres Vercel</span>
+        </div>
+        <div style="font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase;">
+          版本 2.1.0-stable | &copy; 2026 Quotation Pro
+        </div>
+      </footer>
+
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- MODAL: 新增 / 編輯報價單 (CREATE / EDIT QUOTATION MODAL)               -->
+  <!-- ===================================================================== -->
+  <div class="modal fade" id="quotationModal" tabindex="-1" aria-labelledby="quotationModalTitle" aria-hidden="true" data-bs-backdrop="static">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+      <div class="modal-content border-0 shadow-lg">
+        
+        <div class="modal-header bg-light border-bottom">
+          <div class="d-flex align-items-center gap-2">
+            <div class="sidebar-brand-icon" style="width: 28px; height: 28px; font-size: 0.9rem;">Q</div>
+            <h5 class="modal-title fw-bold mb-0 text-dark" id="quotationModalTitle">新增報價單</h5>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+
+        <form id="quotationForm" novalidate>
+          <div class="modal-body p-3 p-md-4">
+            
+            <!-- 主檔基本欄位 -->
+            <div class="row g-3 mb-4">
+              <div class="col-12 col-md-4">
+                <label for="quotationNumber" class="form-label fw-semibold text-secondary small">報價單號 <span class="text-danger">*</span></label>
+                <input type="text" class="form-control font-monospace fw-bold" id="quotationNumber" required>
+              </div>
+
+              <div class="col-12 col-md-4">
+                <label for="quotationCustomerName" class="form-label fw-semibold text-secondary small">客戶名稱 <span class="text-danger">*</span></label>
+                <input type="text" class="form-control" id="quotationCustomerName" placeholder="例如：恆星科技 (Star Tech)" required>
+              </div>
+
+              <div class="col-12 col-md-4">
+                <label for="quotationStatus" class="form-label fw-semibold text-secondary small">報價狀態</label>
+                <select class="form-select" id="quotationStatus">
+                  <option value="DRAFT">草稿 (DRAFT)</option>
+                  <option value="SENT">已發送 / 審核中 (SENT)</option>
+                  <option value="ACCEPTED">已簽約 / 已核准 (ACCEPTED)</option>
+                  <option value="REJECTED">已拒絕 (REJECTED)</option>
+                  <option value="EXPIRED">已過期 (EXPIRED)</option>
+                </select>
+              </div>
+
+              <div class="col-12 col-md-3">
+                <label for="quotationCustomerEmail" class="form-label fw-semibold text-secondary small">客戶 Email</label>
+                <input type="email" class="form-control" id="quotationCustomerEmail" placeholder="service@example.com">
+              </div>
+
+              <div class="col-12 col-md-3">
+                <label for="quotationCustomerPhone" class="form-label fw-semibold text-secondary small">客戶電話</label>
+                <input type="tel" class="form-control" id="quotationCustomerPhone" placeholder="02-27891234">
+              </div>
+
+              <div class="col-12 col-md-3">
+                <label for="quotationIssueDate" class="form-label fw-semibold text-secondary small">報價日期 <span class="text-danger">*</span></label>
+                <input type="date" class="form-control" id="quotationIssueDate" required>
+              </div>
+
+              <div class="col-12 col-md-3">
+                <label for="quotationExpiryDate" class="form-label fw-semibold text-secondary small">有效截止日</label>
+                <input type="date" class="form-control" id="quotationExpiryDate">
+              </div>
+            </div>
+
+            <hr class="my-4 text-slate-300">
+
+            <!-- 明細項目標題與新增按鈕 -->
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <div>
+                <h6 class="fw-bold mb-0 text-dark">報價明細項目 (Quotation Items)</h6>
+                <small class="text-muted">請至少填寫一項品名、數量與單價</small>
+              </div>
+              <button type="button" class="btn btn-outline-primary btn-sm touch-target fw-semibold" onclick="addItemRow()">
+                ➕ 新增項目
+              </button>
+            </div>
+
+            <!-- 明細項目列表容器 (動態渲染) -->
+            <div id="itemsContainer" class="mb-4">
+              <!-- 由 app.js 動態產生 -->
+            </div>
+
+            <!-- 總計摘要與稅率計算區塊 -->
+            <div class="row justify-content-end mb-3">
+              <div class="col-12 col-md-5">
+                <div class="summary-box p-3">
+                  <div class="d-flex justify-content-between mb-2">
+                    <span class="text-muted small">小計 (Subtotal)：</span>
+                    <span class="fw-semibold text-dark" id="summarySubtotal">NT$ 0</span>
+                  </div>
+                  
+                  <div class="d-flex justify-content-between align-items-center mb-2">
+                    <div class="d-flex align-items-center">
+                      <span class="text-muted small me-2">營業稅率：</span>
+                      <div class="input-group input-group-sm" style="width: 85px;">
+                        <input type="number" class="form-control text-end" id="quotationTaxRate" value="5" min="0" max="100" step="0.5" oninput="calculateSummary()">
+                        <span class="input-group-text bg-white">%</span>
+                      </div>
+                    </div>
+                    <span class="text-muted small" id="summaryTaxAmount">NT$ 0</span>
+                  </div>
+
+                  <hr class="my-2 border-secondary border-opacity-25">
+
+                  <div class="d-flex justify-content-between align-items-center">
+                    <span class="fw-bold fs-6 text-dark">總金額 (Total)：</span>
+                    <span class="fw-bold fs-5 text-primary" id="summaryTotalAmount">NT$ 0</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 備註與附加條款 -->
+            <div class="mb-3">
+              <label for="quotationNotes" class="form-label fw-semibold text-secondary small">備註與條款 (Notes & Terms)</label>
+              <textarea class="form-control" id="quotationNotes" rows="3" placeholder="例如：1. 本報價單有效期限為 30 天。&#10;2. 付款條件為月結 30 天。"></textarea>
+            </div>
+
+          </div>
+
+          <div class="modal-footer bg-light border-top">
+            <button type="button" class="btn btn-secondary btn-touch" data-bs-dismiss="modal">取消</button>
+            <button type="submit" id="submitQuotationBtn" class="btn btn-primary btn-touch fw-bold px-4">
+              💾 儲存報價單
+            </button>
+          </div>
+        </form>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- MODAL: 檢視報價單明細 (VIEW QUOTATION MODAL)                           -->
+  <!-- ===================================================================== -->
+  <div class="modal fade" id="viewQuotationModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content border-0 shadow-lg">
+        <div class="modal-header bg-light border-bottom no-print">
+          <h5 class="modal-title fw-bold text-dark">報價單詳細資訊</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body p-0" id="viewQuotationContent">
+          <!-- 由 app.js 動態渲染 -->
+        </div>
+        <div class="modal-footer bg-light border-top no-print">
+          <button type="button" class="btn btn-secondary btn-touch" data-bs-dismiss="modal">關閉</button>
+          <button type="button" class="btn btn-primary btn-touch" onclick="window.print()">
+            🖨️ 列印 / 匯出 PDF
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- MODAL: 刪除確認 (DELETE CONFIRMATION MODAL)                            -->
+  <!-- ===================================================================== -->
+  <div class="modal fade" id="deleteConfirmModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content border-0 shadow">
+        <div class="modal-header bg-danger text-white">
+          <h5 class="modal-title fw-bold">⚠️ 確認刪除報價單</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body py-4">
+          <p class="mb-1">您確定要刪除報價單 <strong id="deleteQuotationNumber" class="text-danger font-monospace"></strong> 嗎？</p>
+          <small class="text-muted">此動作將同時刪除該報價單的所有明細項目，且無法復原！</small>
+        </div>
+        <div class="modal-footer bg-light border-top">
+          <button type="button" class="btn btn-secondary btn-touch" data-bs-dismiss="modal">取消</button>
+          <button type="button" id="confirmDeleteBtn" class="btn btn-danger btn-touch fw-bold">確認刪除</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 本地端 Bootstrap Bundle 與 業務邏輯 JS -->
+  <script src="/js/bootstrap.bundle.min.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>
+
