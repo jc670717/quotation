@@ -2717,11 +2717,11 @@ function renderAuditLogsTable(logs) {
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td><span class="font-monospace text-muted">#${log.id}</span></td>
-      <td><span class="small text-dark font-monospace">${formatDateTime(log.timestamp)}</span></td>
-      <td><span class="badge bg-light text-dark border">${log.moduleName || log.module}</span></td>
-      <td>${actionBadges[log.action] || `<span class="badge bg-secondary">${log.actionName || log.action}</span>`}</td>
+      <td><span class="small text-dark font-monospace">${formatDateTime(log.createdAt)}</span></td>
+      <td><span class="badge bg-light text-dark border">${log.moduleTitle || log.module}</span></td>
+      <td>${actionBadges[log.actionType] || `<span class="badge bg-secondary">${log.actionTitle || log.actionType}</span>`}</td>
       <td>
-        <div class="fw-bold text-dark font-monospace">${log.targetKey || '-'}</div>
+        <div class="fw-bold text-dark font-monospace">${log.targetId || '-'}</div>
         <div class="small text-muted">${log.targetName || ''}</div>
       </td>
       <td>
