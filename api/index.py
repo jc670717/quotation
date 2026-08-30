@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional
 from contextlib import contextmanager
 
 from fastapi import FastAPI, Header, HTTPException, Query, Request, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -212,7 +213,9 @@ def createApiResponse(
         "error": errorMessage,
         "pagination": pagination
     }
-    return JSONResponse(status_code=statusCode, content=content)
+    # PostgreSQL 回傳的 datetime、Decimal 等型別需先轉為 JSON 相容格式，
+    # 否則資料已 commit 後仍可能因回應序列化失敗而讓前端誤顯示建立失敗。
+    return JSONResponse(status_code=statusCode, content=jsonable_encoder(content))
 
 
 # -----------------------------------------------------------------------------
