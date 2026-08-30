@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional
 from contextlib import contextmanager
 
 from fastapi import FastAPI, Header, HTTPException, Query, Request, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -80,6 +81,16 @@ API_MENU_PATHS = {
     "/api/company": "company", "/api/users": "users", "/api/audit-logs": "audit_logs",
     "/api/audit_logs": "audit_logs", "/api/metrics": "dashboard",
 }
+AUDIT_MODULES = {
+    "/api/customers": ("customers", "客戶管理"),
+    "/api/vendors": ("vendors", "廠商管理"),
+    "/api/products": ("products", "產品管理"),
+    "/api/quotations": ("quotations", "報價單管理"),
+    "/api/transactions": ("transactions", "交易管理"),
+    "/api/companies": ("company", "公司基本資料"),
+    "/api/users": ("users", "使用者與權限管理"),
+}
+AUDIT_ACTIONS = {"POST": ("CREATE", "新增"), "PUT": ("UPDATE", "修改"), "DELETE": ("DELETE", "刪除")}
 
 
 def createAccessToken(user: Dict[str, Any]) -> str:
@@ -87,6 +98,7 @@ def createAccessToken(user: Dict[str, Any]) -> str:
     expiresAt = int(time.time()) + 8 * 60 * 60
     payload = json.dumps({
         "sub": user["id"], "role": user["role"],
+        "name": user["name"],
         "menus": user.get("allowed_menus", "").split(","), "exp": expiresAt
     }, separators=(",", ":")).encode("utf-8")
     encodedPayload = base64.urlsafe_b64encode(payload).rstrip(b"=")
@@ -182,6 +194,48 @@ def getDbConnection():
                 conn.close()
 
 
+def writeAuditLog(module: str, moduleTitle: str, actionType: str, actionTitle: str,
+                  targetId: Optional[str], operator: str, ipAddress: Optional[str]) -> None:
+    """使用獨立連線寫入成功的異動；審計失敗不可回頭影響已完成的商務交易。"""
+    try:
+        with getDbConnection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO audit_logs (
+                        module, module_title, action_type, action_title, target_id,
+                        target_name, operator, details, ip_address
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s);
+                """, (
+                    module, moduleTitle, actionType, actionTitle, targetId,
+                    targetId or moduleTitle, operator,
+                    f"{actionTitle}{moduleTitle}" + (f"（目標 ID：{targetId}）" if targetId else ""),
+                    ipAddress or ""
+                ))
+            conn.commit()
+    except Exception as err:
+        print(f"[AUDIT_LOG] 寫入失敗：{err}")
+
+
+@app.middleware("http")
+async def recordSuccessfulMutations(request: Request, callNext):
+    response = await callNext(request)
+    if request.method not in AUDIT_ACTIONS or response.status_code >= 400:
+        return response
+
+    matchedPath = next((path for path in AUDIT_MODULES if request.url.path.startswith(path)), None)
+    if not matchedPath:
+        return response
+
+    module, moduleTitle = AUDIT_MODULES[matchedPath]
+    actionType, actionTitle = AUDIT_ACTIONS[request.method]
+    pathSegments = request.url.path.rstrip("/").split("/")
+    targetId = pathSegments[-1] if pathSegments[-1].isdigit() else None
+    claims = getattr(request.state, "user", {})
+    operator = claims.get("name") or f"使用者 #{claims.get('sub', '未知')}"
+    writeAuditLog(module, moduleTitle, actionType, actionTitle, targetId, operator, request.client.host if request.client else None)
+    return response
+
+
 def autoEnsureSchema():
     """系統首次存取時自動檢查並建立缺少之資料表與欄位 (Safe Migration)"""
     global IS_INITIALIZED
@@ -212,7 +266,9 @@ def createApiResponse(
         "error": errorMessage,
         "pagination": pagination
     }
-    return JSONResponse(status_code=statusCode, content=content)
+    # PostgreSQL 回傳的 datetime、Decimal 等型別需先轉為 JSON 相容格式，
+    # 否則資料已 commit 後仍可能因回應序列化失敗而讓前端誤顯示建立失敗。
+    return JSONResponse(status_code=statusCode, content=jsonable_encoder(content))
 
 
 # -----------------------------------------------------------------------------
@@ -1855,6 +1911,14 @@ def convertQuotationToTransaction(quotationId: int):
                 if not q:
                     return createApiResponse(isSuccess=False, message="找不到指定的報價單", statusCode=404)
 
+                cur.execute("SELECT id FROM transactions WHERE quotation_id = %s LIMIT 1;", (quotationId,))
+                if cur.fetchone():
+                    return createApiResponse(
+                        isSuccess=False,
+                        message="此報價單已轉為交易，請至交易管理查看",
+                        statusCode=status.HTTP_409_CONFLICT
+                    )
+
                 cur.execute("""
                     SELECT qi.quantity, COALESCE(p.cost_price, 0.00) as cost_price
                     FROM quotation_items qi
@@ -2227,6 +2291,7 @@ def deleteUser(userId: int):
 def getMetrics():
     autoEnsureSchema()
     try:
+        currentYear = date.today().year
         with getDbConnection() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute("SELECT COUNT(*) as count FROM customers;")
@@ -2235,12 +2300,21 @@ def getMetrics():
                 cur.execute("SELECT COUNT(*) as count FROM products WHERE status = 'ACTIVE';")
                 productCount = cur.fetchone()["count"]
 
-                cur.execute("SELECT COUNT(*) as count, COALESCE(SUM(total_amount), 0) as total FROM quotations;")
+                cur.execute("""
+                    SELECT COUNT(*) as count, COALESCE(SUM(total_amount), 0) as total
+                    FROM quotations
+                    WHERE EXTRACT(YEAR FROM issue_date) = %s;
+                """, (currentYear,))
                 qRow = cur.fetchone()
                 quotationCount = qRow["count"]
                 quotationTotal = qRow["total"]
 
-                cur.execute("SELECT status, COUNT(*) as count FROM quotations GROUP BY status;")
+                cur.execute("""
+                    SELECT status, COUNT(*) as count
+                    FROM quotations
+                    WHERE EXTRACT(YEAR FROM issue_date) = %s
+                    GROUP BY status;
+                """, (currentYear,))
                 statusRows = cur.fetchall()
                 statusCounts = {
                     "DRAFT": 0, "SENT": 0, "ACCEPTED": 0, "REJECTED": 0, "EXPIRED": 0
@@ -2249,19 +2323,35 @@ def getMetrics():
                     if sRow["status"] in statusCounts:
                         statusCounts[sRow["status"]] = sRow["count"]
 
-                cur.execute("SELECT COUNT(*) as count, COALESCE(SUM(total_amount), 0) as revenue FROM transactions WHERE payment_status = 'PAID';")
+                cur.execute("""
+                    SELECT COUNT(*) as count,
+                           COALESCE(SUM(total_amount), 0) as revenue,
+                           COALESCE(SUM(total_amount - cost_price), 0) as profit
+                    FROM transactions
+                    WHERE payment_status = 'PAID'
+                      AND EXTRACT(YEAR FROM transaction_date) = %s;
+                """, (currentYear,))
                 txRow = cur.fetchone()
                 transactionCount = txRow["count"]
                 totalRevenue = txRow["revenue"]
+                closedProfit = txRow["profit"]
+                closedMargin = (closedProfit / totalRevenue * 100) if totalRevenue else 0
 
         return createApiResponse(
             isSuccess=True,
             data={
                 "customersCount": customerCount,
                 "productsCount": productCount,
+                "currentYear": currentYear,
+                "yearQuotationCount": quotationCount,
+                "yearQuotationTotal": float(quotationTotal),
+                "yearRevenue": float(totalRevenue),
+                "closedProfit": float(closedProfit),
+                "closedMargin": float(closedMargin),
+                "transactionsCount": transactionCount,
+                # 保留舊欄位，避免外部整合尚未更新時中斷。
                 "quotationsCount": quotationCount,
                 "quotationsTotal": float(quotationTotal),
-                "transactionsCount": transactionCount,
                 "totalRevenue": float(totalRevenue),
                 "statusCounts": statusCounts
             },

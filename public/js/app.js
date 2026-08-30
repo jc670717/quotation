@@ -137,6 +137,17 @@ async function fetchApi(endpoint, options = {}) {
   }
 }
 
+function acquireFormSubmitLock(form) {
+  if (!form || form.dataset.isSubmitting === 'true') return null;
+  const submitButton = form.querySelector('button[type="submit"]');
+  form.dataset.isSubmitting = 'true';
+  if (submitButton) submitButton.disabled = true;
+  return () => {
+    form.dataset.isSubmitting = 'false';
+    if (submitButton) submitButton.disabled = false;
+  };
+}
+
 // ============================================================
 // 1. 使用者認證、登入/登出與初始化 (Authentication & Lifecycle)
 // ============================================================
@@ -1380,7 +1391,7 @@ function handleQuotationSearch() {
   renderQuotationsTable(filtered);
 }
 
-// 報價單開立主體公司切換 -> 自動帶入聯絡窗口資料
+// 報價單開立主體公司切換：公司資料控制抬頭與條款，聯絡窗口固定採目前登入者。
 function handleQuotationCompanyChange() {
   const companySelect = document.getElementById('q_company_id');
   const compId = parseInt(companySelect.value, 10);
@@ -1388,13 +1399,14 @@ function handleQuotationCompanyChange() {
   if (!comp) return;
 
   document.getElementById('q_company_name').value = comp.companyName;
-  document.getElementById('q_company_contact_person').value = comp.contactPerson || '';
-  document.getElementById('q_company_contact_phone').value = comp.contactPhone || comp.phone || '';
-  document.getElementById('q_company_contact_email').value = comp.contactEmail || comp.email || '';
+  const currentUser = appState.currentUser || {};
+  document.getElementById('q_company_contact_person').value = currentUser.name || '';
+  document.getElementById('q_company_contact_phone').value = currentUser.phone || '';
+  document.getElementById('q_company_contact_email').value = currentUser.email || '';
 
-  document.getElementById('q_company_contact_person_text').textContent = comp.contactPerson || '未設定';
-  document.getElementById('q_company_contact_phone_text').textContent = comp.contactPhone || comp.phone || '無電話';
-  document.getElementById('q_company_contact_email_text').textContent = comp.contactEmail || comp.email || '無 Email';
+  document.getElementById('q_company_contact_person_text').textContent = currentUser.name || '未設定';
+  document.getElementById('q_company_contact_phone_text').textContent = currentUser.phone || '無電話';
+  document.getElementById('q_company_contact_email_text').textContent = currentUser.email || '無 Email';
 
   // 若尚未輸入備註，帶入該公司的預設條款
   const notesField = document.getElementById('q_notes');
@@ -1672,6 +1684,8 @@ async function handleSaveQuotation(event) {
     showAlert('請至少新增一項報價品項明細', 'warning');
     return;
   }
+  const releaseSubmitLock = acquireFormSubmitLock(event.currentTarget);
+  if (!releaseSubmitLock) return;
 
   const items = [];
   rows.forEach((row, idx) => {
@@ -1700,9 +1714,9 @@ async function handleSaveQuotation(event) {
     quotationNumber: document.getElementById('q_number').value.trim(),
     companyId: parseInt(document.getElementById('q_company_id').value, 10),
     companyName: document.getElementById('q_company_name').value,
-    companyContactPerson: document.getElementById('q_company_contact_person').value,
-    companyContactPhone: document.getElementById('q_company_contact_phone').value,
-    companyContactEmail: document.getElementById('q_company_contact_email').value,
+    salesRep: document.getElementById('q_company_contact_person').value,
+    salesPhone: document.getElementById('q_company_contact_phone').value,
+    salesEmail: document.getElementById('q_company_contact_email').value,
     customerId: parseInt(document.getElementById('q_customer_id').value, 10) || null,
     customerName: document.getElementById('q_customer_name').value.trim(),
     customerTaxId: document.getElementById('q_customer_tax_id').value.trim(),
@@ -1733,12 +1747,18 @@ async function handleSaveQuotation(event) {
   } else {
     showAlert(res.message || '儲存失敗', 'danger');
   }
+  releaseSubmitLock();
 }
 
 // 核心功能：一鍵將報價單轉為交易單 (Convert to Transaction)
 async function convertToTransaction(quotationId) {
   const q = appState.quotations.find(item => item.id === quotationId);
   const qNum = q ? q.quotationNumber : `ID #${quotationId}`;
+
+  const isConfirmed = window.confirm(
+    `確定要將報價單「${qNum}」轉為正式交易嗎？\n\n轉換後會建立交易單，並將報價單狀態更新為「已核准」。`
+  );
+  if (!isConfirmed) return;
 
   const res = await fetchApi(`/api/transactions/from-quotation/${quotationId}`, {
     method: 'POST',
@@ -1767,12 +1787,22 @@ function handleConvertQuotationFromView() {
 }
 
 // 檢視正式報價單 (View Formal Printable Quotation)
-function openViewQuotationModal(id) {
-  const q = appState.quotations.find(item => item.id === id);
-  if (!q) return;
+async function openViewQuotationModal(id) {
+  const cachedQuotation = appState.quotations.find(item => item.id === id);
+  if (!cachedQuotation) return;
+
+  // 清單 API 不含明細品項；預覽時改取完整報價單，避免項目表格空白。
+  const detailResponse = await fetchApi(`/api/quotations/${id}`);
+  if (!detailResponse.success || !detailResponse.data) {
+    showAlert(detailResponse.message || '讀取報價單明細失敗', 'danger');
+    return;
+  }
+  const q = detailResponse.data;
 
   const modalEl = document.getElementById('viewQuotationModal');
   modalEl.setAttribute('data-active-quotation-id', q.id);
+  const convertButton = document.getElementById('viewQConvertTxBtn');
+  if (convertButton) convertButton.classList.toggle('d-none', q.status === 'ACCEPTED');
 
   // 尋找所屬公司資料 (含 LOGO)
   const comp = appState.allCompanies.find(c => c.id === q.companyId) || appState.allCompanies[0] || {};
@@ -1809,7 +1839,7 @@ function openViewQuotationModal(id) {
           <div class="small text-muted">統一編號：${comp.taxId || '28491023'} ｜ 地址：${comp.address || '台北市'}</div>
           <div class="small text-muted">電話：${comp.phone || '-'} ｜ 官方網站：${comp.website || '-'}</div>
           <div class="small text-primary fw-semibold mt-1">
-            報價窗口：${q.companyContactPerson || comp.contactPerson || '業務部'} (📞 ${q.companyContactPhone || comp.contactPhone || comp.phone || '-'} ✉️ ${q.companyContactEmail || comp.contactEmail || comp.email || '-'})
+            報價窗口：${q.salesRep || comp.contactPerson || '業務部'} (📞 ${q.salesPhone || comp.contactPhone || comp.phone || '-'} ✉️ ${q.salesEmail || comp.contactEmail || comp.email || '-'})
           </div>
         </div>
         <div class="col-4 text-end">
@@ -2161,6 +2191,8 @@ function openEditTransactionModal(id) {
 
 async function handleSaveTransaction(event) {
   event.preventDefault();
+  const releaseSubmitLock = acquireFormSubmitLock(event.currentTarget);
+  if (!releaseSubmitLock) return;
   const id = document.getElementById('tx_id').value;
   const isEdit = !!id;
 
@@ -2221,6 +2253,7 @@ async function handleSaveTransaction(event) {
   } else {
     showAlert(res.message || '儲存失敗', 'danger');
   }
+  releaseSubmitLock();
 }
 
 function confirmDeleteTransaction(id, number) {
@@ -2407,6 +2440,8 @@ function openCreateCompanyModal() {
 
 async function handleSaveCompany(event) {
   event.preventDefault();
+  const releaseSubmitLock = acquireFormSubmitLock(event.currentTarget);
+  if (!releaseSubmitLock) return;
   const id = document.getElementById('comp_id').value;
   const isEdit = !!id;
 
@@ -2441,6 +2476,7 @@ async function handleSaveCompany(event) {
   } else {
     showAlert(res.message || '儲存失敗', 'danger');
   }
+  releaseSubmitLock();
 }
 
 function handleDeleteCurrentCompany() {
@@ -2600,6 +2636,8 @@ function openEditUserModal(id) {
 
 async function handleSaveUser(event) {
   event.preventDefault();
+  const releaseSubmitLock = acquireFormSubmitLock(event.currentTarget);
+  if (!releaseSubmitLock) return;
   const id = document.getElementById('u_id').value;
   const isEdit = !!id;
   const role = document.getElementById('u_role').value;
@@ -2622,7 +2660,8 @@ async function handleSaveUser(event) {
     email: document.getElementById('u_email').value.trim(),
     role,
     status: document.getElementById('u_status').value,
-    allowedMenus,
+    // API 與資料庫以逗號分隔字串儲存，避免送出陣列造成 Pydantic 驗證失敗。
+    allowedMenus: allowedMenus.join(','),
     createdBy: appState.currentUser.name,
     updatedBy: appState.currentUser.name
   };
@@ -2642,6 +2681,7 @@ async function handleSaveUser(event) {
   } else {
     showAlert(res.message || '儲存失敗', 'danger');
   }
+  releaseSubmitLock();
 }
 
 function confirmDeleteUser(id, name) {
@@ -2693,11 +2733,11 @@ function renderAuditLogsTable(logs) {
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td><span class="font-monospace text-muted">#${log.id}</span></td>
-      <td><span class="small text-dark font-monospace">${formatDateTime(log.timestamp)}</span></td>
-      <td><span class="badge bg-light text-dark border">${log.moduleName || log.module}</span></td>
-      <td>${actionBadges[log.action] || `<span class="badge bg-secondary">${log.actionName || log.action}</span>`}</td>
+      <td><span class="small text-dark font-monospace">${formatDateTime(log.createdAt)}</span></td>
+      <td><span class="badge bg-light text-dark border">${log.moduleTitle || log.module}</span></td>
+      <td>${actionBadges[log.actionType] || `<span class="badge bg-secondary">${log.actionTitle || log.actionType}</span>`}</td>
       <td>
-        <div class="fw-bold text-dark font-monospace">${log.targetKey || '-'}</div>
+        <div class="fw-bold text-dark font-monospace">${log.targetId || '-'}</div>
         <div class="small text-muted">${log.targetName || ''}</div>
       </td>
       <td>
