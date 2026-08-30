@@ -368,14 +368,9 @@ body {
     background: #ffffff;
   }
 
-  /* 僅印出報價單，避免主畫面與 Bootstrap backdrop 一起輸出。 */
-  body * {
-    visibility: hidden !important;
-  }
-
-  #viewQuotationModal,
-  #viewQuotationModal * {
-    visibility: visible !important;
+  /* 僅保留報價單 Modal；若只用 visibility 隱藏，背景仍會佔據列印頁面而產生空白頁。 */
+  body > * {
+    display: none !important;
   }
 
   #viewQuotationModal {
