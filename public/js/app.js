@@ -104,6 +104,9 @@ async function fetchApi(endpoint, options = {}) {
     };
     const res = await fetch(endpoint, config);
     const result = await res.json();
+    if (result && result.success === false && result.error) {
+      result.message = `${result.message || '操作失敗'}：${result.error}`;
+    }
     return result;
   } catch (err) {
     console.error(`Fetch API Error [${endpoint}]:`, err);
@@ -816,7 +819,7 @@ async function handleSaveCustomer(event) {
     if (modal) modal.hide();
     await loadCustomers();
   } else {
-    showAlert(res.message || '儲存失敗', 'danger');
+    showAlert(res.error ? `${res.message || '儲存失敗'}: ${res.error}` : (res.message || '儲存失敗'), 'danger', 6000);
   }
 }
 
@@ -870,7 +873,6 @@ function renderVendorsTable(vendors) {
         <div>📞 ${v.phone || '-'}</div>
         <div class="small text-muted">✉️ ${v.email || '-'}</div>
       </td>
-      <td><small class="text-secondary">${v.address || '-'}</small></td>
       <td><small class="text-dark fw-semibold">${v.productsAndServices || '-'}</small></td>
       <td>
         <span class="badge bg-primary-subtle text-primary border border-primary-subtle">${v.totalProducts || 0} 種產品</span>
@@ -1029,7 +1031,6 @@ function renderProductsTable(products) {
         <div class="fw-semibold text-dark">${p.brand || '自研'}</div>
         <div class="small text-muted font-monospace">${p.model || '-'}</div>
       </td>
-      <td><span class="badge bg-light text-dark border">${p.vendor || '自產/無廠商'}</span></td>
       <td><span class="badge bg-secondary-subtle text-secondary">${p.category || '一般'}</span></td>
       <td><span class="text-muted">${p.unit || '件'}</span></td>
       <td><span class="text-danger fw-semibold">${formatCurrency(cost)}</span></td>

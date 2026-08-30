@@ -587,6 +587,15 @@ def executeInitDb() -> bool:
     (3, '林小花 (業務助理)', 'sales_lin', 'user123', '業務支援部', '(02) 2789-0123 #202', 'xiaohua.lin@acer-info.com.tw', 'USER', 'dashboard,customers,quotations', 'ACTIVE'),
     (4, '張淑芬 (財務會計)', 'finance_wang', 'user123', '財務會計部', '(02) 2789-0123 #301', 'finance@acer-info.com.tw', 'USER', 'quotations,transactions', 'ACTIVE')
     ON CONFLICT (id) DO NOTHING;
+    -- 同步所有 SERIAL 主鍵序列至目前最大值，避免主鍵衝突
+    SELECT setval(pg_get_serial_sequence('companies', 'id'), COALESCE((SELECT MAX(id) FROM companies), 1), true);
+    SELECT setval(pg_get_serial_sequence('customers', 'id'), COALESCE((SELECT MAX(id) FROM customers), 1), true);
+    SELECT setval(pg_get_serial_sequence('vendors', 'id'), COALESCE((SELECT MAX(id) FROM vendors), 1), true);
+    SELECT setval(pg_get_serial_sequence('products', 'id'), COALESCE((SELECT MAX(id) FROM products), 1), true);
+    SELECT setval(pg_get_serial_sequence('quotations', 'id'), COALESCE((SELECT MAX(id) FROM quotations), 1), true);
+    SELECT setval(pg_get_serial_sequence('quotation_items', 'id'), COALESCE((SELECT MAX(id) FROM quotation_items), 1), true);
+    SELECT setval(pg_get_serial_sequence('transactions', 'id'), COALESCE((SELECT MAX(id) FROM transactions), 1), true);
+    SELECT setval(pg_get_serial_sequence('users', 'id'), COALESCE((SELECT MAX(id) FROM users), 1), true);
     """
     with getDbConnection() as conn:
         with conn.cursor() as cur:
@@ -776,7 +785,17 @@ def createCustomer(payload: CustomerInput):
     try:
         with getDbConnection() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                code = payload.customerCode or f"CUST-{int(time.time()) % 10000:04d}"
+                if payload.customerCode and payload.customerCode.strip():
+                    code = payload.customerCode.strip()
+                else:
+                    cur.execute("SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM customers;")
+                    r = cur.fetchone()
+                    nid = r["next_id"] if r else 1
+                    code = f"CUST-{nid:04d}"
+                    cur.execute("SELECT 1 FROM customers WHERE customer_code = %s;", (code,))
+                    if cur.fetchone():
+                        code = f"CUST-{int(time.time())}"
+
                 cur.execute("""
                     INSERT INTO customers (
                         customer_code, customer_name, tax_id, contact_person, email, phone, address,
@@ -788,15 +807,15 @@ def createCustomer(payload: CustomerInput):
                               industry, notes, created_at as "createdAt";
                 """, (
                     code, payload.customerName.strip(),
-                    payload.taxId.strip() if payload.taxId else None,
-                    payload.contactPerson.strip() if payload.contactPerson else None,
-                    payload.email.strip() if payload.email else None,
-                    payload.phone.strip() if payload.phone else None,
-                    payload.address.strip() if payload.address else None,
-                    payload.shippingAddress.strip() if payload.shippingAddress else None,
-                    payload.paymentTerms.strip() if payload.paymentTerms else None,
-                    payload.industry.strip() if payload.industry else None,
-                    payload.notes.strip() if payload.notes else None,
+                    payload.taxId.strip() if payload.taxId and payload.taxId.strip() else None,
+                    payload.contactPerson.strip() if payload.contactPerson and payload.contactPerson.strip() else None,
+                    payload.email.strip() if payload.email and payload.email.strip() else None,
+                    payload.phone.strip() if payload.phone and payload.phone.strip() else None,
+                    payload.address.strip() if payload.address and payload.address.strip() else None,
+                    payload.shippingAddress.strip() if payload.shippingAddress and payload.shippingAddress.strip() else None,
+                    payload.paymentTerms.strip() if payload.paymentTerms and payload.paymentTerms.strip() else None,
+                    payload.industry.strip() if payload.industry and payload.industry.strip() else None,
+                    payload.notes.strip() if payload.notes and payload.notes.strip() else None,
                     payload.createdBy or "系統使用者",
                     payload.updatedBy or "系統使用者"
                 ))
@@ -937,7 +956,17 @@ def createVendor(payload: VendorInput):
     try:
         with getDbConnection() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                code = payload.vendorCode or f"VEND-{int(time.time()) % 10000:04d}"
+                if payload.vendorCode and payload.vendorCode.strip():
+                    code = payload.vendorCode.strip()
+                else:
+                    cur.execute("SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM vendors;")
+                    r = cur.fetchone()
+                    nid = r["next_id"] if r else 1
+                    code = f"VEND-{nid:04d}"
+                    cur.execute("SELECT 1 FROM vendors WHERE vendor_code = %s;", (code,))
+                    if cur.fetchone():
+                        code = f"VEND-{int(time.time())}"
+
                 cur.execute("""
                     INSERT INTO vendors (
                         vendor_code, vendor_name, tax_id, contact_person, phone, email, address,
@@ -948,13 +977,13 @@ def createVendor(payload: VendorInput):
                               products_services as "productsServices", notes, created_at as "createdAt";
                 """, (
                     code, payload.vendorName.strip(),
-                    payload.taxId.strip() if payload.taxId else None,
-                    payload.contactPerson.strip() if payload.contactPerson else None,
-                    payload.phone.strip() if payload.phone else None,
-                    payload.email.strip() if payload.email else None,
-                    payload.address.strip() if payload.address else None,
-                    payload.productsServices.strip() if payload.productsServices else None,
-                    payload.notes.strip() if payload.notes else None,
+                    payload.taxId.strip() if payload.taxId and payload.taxId.strip() else None,
+                    payload.contactPerson.strip() if payload.contactPerson and payload.contactPerson.strip() else None,
+                    payload.phone.strip() if payload.phone and payload.phone.strip() else None,
+                    payload.email.strip() if payload.email and payload.email.strip() else None,
+                    payload.address.strip() if payload.address and payload.address.strip() else None,
+                    payload.productsServices.strip() if payload.productsServices and payload.productsServices.strip() else None,
+                    payload.notes.strip() if payload.notes and payload.notes.strip() else None,
                     payload.createdBy or "系統使用者",
                     payload.updatedBy or "系統使用者"
                 ))
@@ -1100,7 +1129,17 @@ def createProduct(payload: ProductInput):
     try:
         with getDbConnection() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                code = payload.productCode or f"PROD-{int(time.time()) % 10000:04d}"
+                if payload.productCode and payload.productCode.strip():
+                    code = payload.productCode.strip()
+                else:
+                    cur.execute("SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM products;")
+                    r = cur.fetchone()
+                    nid = r["next_id"] if r else 1
+                    code = f"PROD-{nid:04d}"
+                    cur.execute("SELECT 1 FROM products WHERE product_code = %s;", (code,))
+                    if cur.fetchone():
+                        code = f"PROD-{int(time.time())}"
+
                 cur.execute("""
                     INSERT INTO products (
                         product_code, product_name, category, brand, model, vendor, unit,
@@ -1113,16 +1152,16 @@ def createProduct(payload: ProductInput):
                               stock_quantity as "stockQuantity", image, description, status, created_at as "createdAt";
                 """, (
                     code, payload.productName.strip(),
-                    payload.category.strip() if payload.category else "一般商品",
-                    payload.brand.strip() if payload.brand else None,
-                    payload.model.strip() if payload.model else None,
-                    payload.vendor.strip() if payload.vendor else None,
-                    payload.unit.strip() if payload.unit else "件",
+                    payload.category.strip() if payload.category and payload.category.strip() else "一般商品",
+                    payload.brand.strip() if payload.brand and payload.brand.strip() else None,
+                    payload.model.strip() if payload.model and payload.model.strip() else None,
+                    payload.vendor.strip() if payload.vendor and payload.vendor.strip() else None,
+                    payload.unit.strip() if payload.unit and payload.unit.strip() else "件",
                     float(payload.unitPrice),
                     float(payload.costPrice or 0),
                     payload.stockQuantity if payload.stockQuantity is not None else 100,
                     payload.image,
-                    payload.description.strip() if payload.description else None,
+                    payload.description.strip() if payload.description and payload.description.strip() else None,
                     payload.status or "ACTIVE",
                     payload.createdBy or "系統使用者",
                     payload.updatedBy or "系統使用者"
