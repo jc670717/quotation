@@ -2097,6 +2097,7 @@ def getMetrics():
 
 
 @app.get("/api/audit-logs")
+@app.get("/api/audit_logs")
 def getAuditLogs(
     module: Optional[str] = Query(None),
     limit: int = Query(50, ge=1, le=100)
