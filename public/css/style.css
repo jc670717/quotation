@@ -474,4 +474,50 @@ body {
   top: 90px;
 }
 
+/* ============================================================
+   登入頁面樣式 (Login Screen) - 尊榮深色與俐落卡片排版
+   ============================================================ */
+.login-wrapper {
+  min-height: 100vh;
+  background: radial-gradient(circle at 10% 20%, rgba(37, 99, 235, 0.15) 0%, transparent 40%),
+              radial-gradient(circle at 90% 80%, rgba(30, 58, 138, 0.2) 0%, transparent 40%),
+              linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+}
+
+.login-card {
+  background: #ffffff;
+  border-radius: 18px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+  max-width: 960px;
+  width: 100%;
+}
+
+.login-account-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 0.75rem 0.9rem;
+  background-color: #f8fafc;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.login-account-card:hover {
+  border-color: #2563eb;
+  background-color: #eff6ff;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.12);
+}
+
+.login-account-card.admin-card {
+  border-color: #bfdbfe;
+  background-color: #eff6ff;
+}
+
+
 

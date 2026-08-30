@@ -780,6 +780,22 @@ function devApiPlugin(): Plugin {
       updatedBy: '系統管理者 (王總監)',
       createdAt: '2026-08-10T14:30:00Z',
       updatedAt: '2026-08-23T14:30:00Z'
+    },
+    {
+      id: 4,
+      name: '張淑芬 (財務會計)',
+      username: 'finance_wang',
+      password: 'user123',
+      department: '財務會計部',
+      phone: '(02) 2345-6789 #301',
+      email: 'finance@quotationpro.com.tw',
+      role: 'USER',
+      allowedMenus: ['dashboard', 'quotations', 'transactions'],
+      status: 'ACTIVE',
+      createdBy: '系統管理者 (王總監)',
+      updatedBy: '系統管理者 (王總監)',
+      createdAt: '2026-08-15T09:00:00Z',
+      updatedAt: '2026-08-25T09:00:00Z'
     }
   ];
 
@@ -2000,6 +2016,71 @@ function devApiPlugin(): Plugin {
             }));
             return;
           }
+        }
+
+        // ==========================================
+        // AUTH API (/api/auth/login, /api/auth/logout)
+        // ==========================================
+        if (url === '/api/auth/login' && req.method === 'POST') {
+          try {
+            const payload = await getBody();
+            const { username, password } = payload;
+            if (!username) {
+              res.statusCode = 400;
+              res.end(JSON.stringify({ success: false, data: null, message: '請輸入使用者帳號' }));
+              return;
+            }
+            const user = users.find(u => u.username.toLowerCase() === username.trim().toLowerCase());
+            if (!user) {
+              res.statusCode = 401;
+              res.end(JSON.stringify({ success: false, data: null, message: '帳號不存在，請檢查輸入或選擇預設測試帳號' }));
+              return;
+            }
+            if (user.status !== 'ACTIVE') {
+              res.statusCode = 403;
+              res.end(JSON.stringify({ success: false, data: null, message: '該帳號已被停用，請聯繫系統管理者' }));
+              return;
+            }
+            const inputPwd = (password || '').trim();
+            const isMatch = !user.password || user.password === inputPwd || 
+              (user.username === 'admin' && ['admin888', 'admin123', 'admin'].includes(inputPwd)) ||
+              (user.role === 'USER' && ['user123', '123456'].includes(inputPwd));
+
+            if (!isMatch && inputPwd !== user.password) {
+              res.statusCode = 401;
+              res.end(JSON.stringify({ success: false, data: null, message: '密碼不正確，請確認密碼（管理員預設 admin888 或 admin123）' }));
+              return;
+            }
+
+            addAuditLog('users', '使用者認證', 'LOGIN', '使用者登入', user.username, user.name, user.name, `${user.name} 成功登入系統`);
+
+            res.statusCode = 200;
+            res.end(JSON.stringify({
+              success: true,
+              data: {
+                id: user.id,
+                name: user.name,
+                username: user.username,
+                department: user.department,
+                role: user.role,
+                phone: user.phone,
+                email: user.email,
+                allowedMenus: user.allowedMenus,
+                status: user.status
+              },
+              message: `歡迎回來，${user.name}！登入成功`
+            }));
+          } catch (err: any) {
+            res.statusCode = 500;
+            res.end(JSON.stringify({ success: false, data: null, message: '登入程序異常', error: err.message }));
+          }
+          return;
+        }
+
+        if (url === '/api/auth/logout' && req.method === 'POST') {
+          res.statusCode = 200;
+          res.end(JSON.stringify({ success: true, data: null, message: '已安全登出系統' }));
+          return;
         }
 
         // ==========================================

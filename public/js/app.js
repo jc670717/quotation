@@ -112,7 +112,7 @@ async function fetchApi(endpoint, options = {}) {
 }
 
 // ============================================================
-// 1. 初始化與視圖切換 (View Routing & User Permissions)
+// 1. 使用者認證、登入/登出與初始化 (Authentication & Lifecycle)
 // ============================================================
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -125,10 +125,156 @@ async function initializeApp() {
   await loadInitialVendors();
   await loadInitialCustomers();
   await loadInitialProducts();
-  
-  renderCurrentUserHeader();
-  applySidebarMenuPermissions();
-  switchView('dashboard');
+
+  // 檢查本機儲存的登入狀態
+  const savedUserJson = localStorage.getItem('qms_user') || sessionStorage.getItem('qms_user');
+  if (savedUserJson) {
+    try {
+      const savedUser = JSON.parse(savedUserJson);
+      const found = appState.allUsers.find(u => u.username === savedUser.username);
+      if (found && found.status === 'ACTIVE') {
+        appState.currentUser = found;
+        showAppLayout();
+        renderCurrentUserHeader();
+        applySidebarMenuPermissions();
+        switchView('dashboard');
+        return;
+      }
+    } catch {
+      // JSON 解析失敗則清除
+      localStorage.removeItem('qms_user');
+      sessionStorage.removeItem('qms_user');
+    }
+  }
+
+  // 若未登入，顯示全螢幕登入畫面供使用者體驗與測試
+  showLoginScreen();
+}
+
+// 顯示全螢幕登入畫面
+function showLoginScreen() {
+  const loginScreen = document.getElementById('loginScreen');
+  const mainLayout = document.getElementById('mainAppLayout');
+  const errorAlert = document.getElementById('loginErrorAlert');
+
+  if (loginScreen) loginScreen.classList.remove('d-none');
+  if (mainLayout) mainLayout.classList.add('d-none');
+  if (errorAlert) {
+    errorAlert.classList.add('d-none');
+    errorAlert.textContent = '';
+  }
+
+  // 預設將游標置於帳號輸入框
+  const usernameInput = document.getElementById('loginUsername');
+  if (usernameInput) {
+    usernameInput.value = '';
+    usernameInput.focus();
+  }
+  const pwdInput = document.getElementById('loginPassword');
+  if (pwdInput) pwdInput.value = '';
+}
+
+// 顯示主系統介面
+function showAppLayout() {
+  const loginScreen = document.getElementById('loginScreen');
+  const mainLayout = document.getElementById('mainAppLayout');
+
+  if (loginScreen) loginScreen.classList.add('d-none');
+  if (mainLayout) mainLayout.classList.remove('d-none');
+}
+
+// 切換密碼可見性
+function togglePasswordVisibility(fieldId, btn) {
+  const field = document.getElementById(fieldId);
+  if (!field) return;
+  if (field.type === 'password') {
+    field.type = 'text';
+    btn.textContent = '🔒 隱藏密碼';
+  } else {
+    field.type = 'password';
+    btn.textContent = '👁️ 顯示密碼';
+  }
+}
+
+// 處理登入表單送出
+async function handleLogin(e) {
+  if (e && e.preventDefault) e.preventDefault();
+
+  const usernameInput = document.getElementById('loginUsername');
+  const passwordInput = document.getElementById('loginPassword');
+  const rememberMe = document.getElementById('rememberMe');
+  const errorAlert = document.getElementById('loginErrorAlert');
+  const submitBtn = document.getElementById('loginSubmitBtn');
+
+  const username = usernameInput ? usernameInput.value.trim() : '';
+  const password = passwordInput ? passwordInput.value.trim() : '';
+
+  if (!username) {
+    if (errorAlert) {
+      errorAlert.textContent = '請輸入使用者帳號';
+      errorAlert.classList.remove('d-none');
+    }
+    return;
+  }
+
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status"></span>登入中...';
+  }
+
+  const res = await fetchApi('/api/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ username, password })
+  });
+
+  if (submitBtn) {
+    submitBtn.disabled = false;
+    submitBtn.innerHTML = '<span>🚀</span><span>登入系統</span>';
+  }
+
+  if (res.success && res.data) {
+    appState.currentUser = res.data;
+    const isRemember = rememberMe ? rememberMe.checked : true;
+    if (isRemember) {
+      localStorage.setItem('qms_user', JSON.stringify(res.data));
+    } else {
+      sessionStorage.setItem('qms_user', JSON.stringify(res.data));
+    }
+
+    showAppLayout();
+    renderCurrentUserHeader();
+    applySidebarMenuPermissions();
+    switchView('dashboard');
+    showAlert(res.message || `歡迎回來，${res.data.name}！`, 'success');
+  } else {
+    if (errorAlert) {
+      errorAlert.textContent = res.message || '登入失敗，請確認帳號與密碼。';
+      errorAlert.classList.remove('d-none');
+    }
+  }
+}
+
+// 一鍵快速登入（供測試帳號使用）
+async function quickLogin(username, password) {
+  const usernameInput = document.getElementById('loginUsername');
+  const passwordInput = document.getElementById('loginPassword');
+  if (usernameInput) usernameInput.value = username;
+  if (passwordInput) passwordInput.value = password;
+
+  const errorAlert = document.getElementById('loginErrorAlert');
+  if (errorAlert) errorAlert.classList.add('d-none');
+
+  await handleLogin();
+}
+
+// 安全登出處理
+async function handleLogout() {
+  await fetchApi('/api/auth/logout', { method: 'POST' });
+  localStorage.removeItem('qms_user');
+  sessionStorage.removeItem('qms_user');
+
+  showLoginScreen();
+  showAlert('您已成功安全登出系統', 'info');
 }
 
 // 載入使用者清單
