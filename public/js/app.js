@@ -1556,9 +1556,12 @@ function addQuotationItemRow(item = null) {
   rowDiv.className = 'item-row p-3 mb-2';
   rowDiv.id = rowId;
 
-  // 產品下拉選單選項
+  // 報價只能新選銷售中的產品；停售品項仍保留於既有明細，避免編輯舊報價時遺失關聯。
+  const originalProduct = item?.productId ? appState.products.find(p => p.id === item.productId) : null;
+  const isOriginalProductDiscontinued = originalProduct && originalProduct.status !== 'ACTIVE';
+  const originalProductId = isOriginalProductDiscontinued ? originalProduct.id : '';
   let productOptions = '<option value="">-- 關聯現有產品 (選填) --</option>';
-  appState.products.forEach(p => {
+  appState.products.filter(p => p.status === 'ACTIVE').forEach(p => {
     productOptions += `<option value="${p.id}" data-price="${p.unitPrice}" data-cost="${p.costPrice}" data-desc="${p.description || ''}" ${item && item.productId === p.id ? 'selected' : ''}>${p.productName} [售: ${formatCurrency(p.unitPrice)}]</option>`;
   });
 
@@ -1572,9 +1575,10 @@ function addQuotationItemRow(item = null) {
   rowDiv.innerHTML = `
     <div class="row g-2 align-items-center">
       <div class="col-12 col-md-4">
-        <select class="form-select form-select-sm mb-1 item-prod-select" onchange="handleQuotationItemProductChange('${rowId}', this)">
+        <select class="form-select form-select-sm mb-1 item-prod-select" data-original-product-id="${originalProductId}" onchange="handleQuotationItemProductChange('${rowId}', this)">
           ${productOptions}
         </select>
+        ${isOriginalProductDiscontinued ? '<div class="form-text text-warning">原關聯產品已停售，保留既有明細；可改選銷售中產品。</div>' : ''}
         <input type="text" class="form-control form-control-sm item-name-input" required placeholder="品項名稱 *" value="${itemName}" />
       </div>
       <div class="col-12 col-md-3">
@@ -1608,7 +1612,11 @@ function addQuotationItemRow(item = null) {
 
 function handleQuotationItemProductChange(rowId, selectEl) {
   const selectedOpt = selectEl.options[selectEl.selectedIndex];
-  if (!selectedOpt || !selectedOpt.value) return;
+  if (!selectedOpt || !selectedOpt.value) {
+    // 使用者主動清除選擇時，不再保留舊有停售產品關聯。
+    selectEl.dataset.originalProductId = '';
+    return;
+  }
 
   const row = document.getElementById(rowId);
   if (!row) return;
@@ -1782,7 +1790,9 @@ async function handleSaveQuotation(event) {
   const items = [];
   rows.forEach((row, idx) => {
     const prodSelect = row.querySelector('.item-prod-select');
-    const prodId = prodSelect && prodSelect.value ? parseInt(prodSelect.value, 10) : null;
+    // 已停售產品不會列在下拉選單，但編輯舊報價且未改動明細時仍須保留原有關聯。
+    const productIdValue = prodSelect?.value || prodSelect?.dataset.originalProductId || '';
+    const prodId = productIdValue ? parseInt(productIdValue, 10) : null;
     const name = row.querySelector('.item-name-input')?.value.trim() || '未命名品項';
     const desc = row.querySelector('.item-desc-input')?.value.trim() || '';
     const qty = parseFloat(row.querySelector('.item-qty-input')?.value) || 1;
