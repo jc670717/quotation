@@ -1165,8 +1165,8 @@ function renderProductsTable(products) {
     const margin = price > 0 ? ((profit / price) * 100).toFixed(1) : '0.0';
 
     // 縮圖
-    const thumbHtml = p.imageUrl ? 
-      `<img src="${p.imageUrl}" alt="${p.productName}" class="rounded border" style="width: 48px; height: 48px; object-fit: cover;" />` :
+    const thumbHtml = p.imageUrl ?
+      `<button type="button" class="btn p-0 border-0 bg-transparent product-image-preview-trigger" onclick="openProductImagePreview(${p.id})" title="查看產品圖片" aria-label="查看 ${p.productName} 的產品圖片"><img src="${p.imageUrl}" alt="${p.productName}" class="rounded border" style="width: 48px; height: 48px; object-fit: cover;" /></button>` :
       `<div class="bg-light rounded border text-muted d-flex align-items-center justify-content-center small" style="width: 48px; height: 48px;">📦</div>`;
 
     tr.innerHTML = `
@@ -1204,6 +1204,21 @@ function renderProductsTable(products) {
     `;
     tbody.appendChild(tr);
   });
+}
+
+function openProductImagePreview(productId) {
+  const product = appState.products.find(item => item.id === productId);
+  if (!product?.imageUrl) return;
+
+  const modalEl = document.getElementById('productImagePreviewModal');
+  const imageEl = document.getElementById('productImagePreview');
+  const titleEl = document.getElementById('productImagePreviewTitle');
+  if (!modalEl || !imageEl || !titleEl) return;
+
+  titleEl.textContent = `產品圖片：${product.productName}`;
+  imageEl.src = product.imageUrl;
+  imageEl.alt = product.productName;
+  bootstrap.Modal.getOrCreateInstance(modalEl).show();
 }
 
 function handleProductSearch() {

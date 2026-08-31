@@ -244,6 +244,20 @@ body {
   margin-left: -1px;
 }
 
+.product-image-preview-trigger {
+  cursor: zoom-in;
+}
+
+.product-image-preview-trigger img {
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.product-image-preview-trigger:hover img,
+.product-image-preview-trigger:focus-visible img {
+  transform: scale(1.06);
+  box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.18);
+}
+
 /* 狀態標籤樣式 (Refined Pill Badges - 高對比度與清晰識別) */
 .badge-status,
 .badge-draft,
