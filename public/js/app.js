@@ -30,6 +30,8 @@ const appState = {
   deleteCallback: null
 };
 
+let isHandlingExpiredSession = false;
+
 // 格式化數字為千分位貨幣字串
 function formatCurrency(amount) {
   const num = parseFloat(amount) || 0;
@@ -126,6 +128,9 @@ async function fetchApi(endpoint, options = {}) {
     }
 
     if (!res.ok) {
+      if (res.status === 401 && endpoint !== '/api/auth/login') {
+        handleExpiredSession();
+      }
       if (result.detail) {
         const detailMsg = typeof result.detail === 'string'
           ? result.detail
@@ -152,6 +157,24 @@ async function fetchApi(endpoint, options = {}) {
     return { success: false, data: null, message, error: err.message };
   } finally {
     clearTimeout(timeoutId);
+  }
+}
+
+function handleExpiredSession() {
+  // Token 有效期限到期或部署後 AUTH_SECRET 變更時，不能繼續保留半載入的後台畫面。
+  if (isHandlingExpiredSession) return;
+  isHandlingExpiredSession = true;
+
+  localStorage.removeItem('qms_user');
+  localStorage.removeItem('qms_access_token');
+  sessionStorage.removeItem('qms_user');
+  sessionStorage.removeItem('qms_access_token');
+  showLoginScreen();
+
+  const errorAlert = document.getElementById('loginErrorAlert');
+  if (errorAlert) {
+    errorAlert.textContent = '登入已失效，請重新登入後繼續操作。';
+    errorAlert.classList.remove('d-none');
   }
 }
 
@@ -195,10 +218,15 @@ async function initializeApp() {
   }
 
   await loadInitialUsers();
+  if (isHandlingExpiredSession) return;
   await loadInitialCompanies();
+  if (isHandlingExpiredSession) return;
   await loadInitialVendors();
+  if (isHandlingExpiredSession) return;
   await loadInitialCustomers();
+  if (isHandlingExpiredSession) return;
   await loadInitialProducts();
+  if (isHandlingExpiredSession) return;
 
   showAppLayout();
   renderCurrentUserHeader();
@@ -288,6 +316,7 @@ async function handleLogin(e) {
   }
 
   if (res.success && res.data) {
+    isHandlingExpiredSession = false;
     const { accessToken, ...currentUser } = res.data;
     if (!accessToken) {
       if (errorAlert) {
