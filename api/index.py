@@ -41,6 +41,8 @@ POSTGRES_URL = (
 )
 INIT_DB_TOKEN = os.getenv("INIT_DB_TOKEN", "")
 AUTH_SECRET = os.getenv("AUTH_SECRET", "")
+# Serverless 每次冷啟動都跑完整 DDL 會拖慢 API，正式環境改由受保護的 /api/init-db 執行。
+AUTO_INIT_SCHEMA = os.getenv("AUTO_INIT_SCHEMA", "").lower() == "true"
 ALLOWED_ORIGINS = [
     origin.strip()
     for origin in os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
@@ -238,9 +240,12 @@ async def recordSuccessfulMutations(request: Request, callNext):
 
 
 def autoEnsureSchema():
-    """系統首次存取時自動檢查並建立缺少之資料表與欄位 (Safe Migration)"""
+    """僅在明確開啟時執行 Schema 自動初始化，避免 Serverless 冷啟動阻塞一般 API。"""
     global IS_INITIALIZED
     if IS_INITIALIZED or not POSTGRES_URL:
+        return
+    if not AUTO_INIT_SCHEMA:
+        IS_INITIALIZED = True
         return
     try:
         executeInitDb()
