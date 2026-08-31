@@ -775,9 +775,9 @@ function renderDashboardRecentQuotations(quotations) {
       <td><span class="text-success fw-bold">${formatCurrency(profit)}</span> <small class="text-muted">(${margin}%)</small></td>
       <td>${statusBadges[q.status] || q.status}</td>
       <td class="text-end">
-        <div class="btn-group btn-group-sm">
-          <button class="btn btn-outline-secondary" onclick="openViewQuotationModal(${q.id})" title="檢視報價單">👁️</button>
-          ${q.status === 'ACCEPTED' && !q.hasTransaction ? `<button class="btn btn-outline-success" onclick="convertToTransaction(${q.id})" title="轉為交易單">💳 轉交易</button>` : ''}
+        <div class="btn-group btn-group-sm action-icon-group">
+          <button class="btn action-icon-btn" onclick="openViewQuotationModal(${q.id})" title="檢視報價單" aria-label="檢視報價單">👁️</button>
+          ${q.status === 'ACCEPTED' && !q.hasTransaction ? `<button class="btn action-icon-btn" onclick="convertToTransaction(${q.id})" title="轉為交易單" aria-label="轉為交易單">💳</button>` : ''}
         </div>
       </td>
     `;
@@ -814,7 +814,7 @@ function renderDashboardRecentTransactions(transactions) {
       </td>
       <td>${paymentBadges[t.paymentStatus] || t.paymentStatus}</td>
       <td class="text-end">
-        <button class="btn btn-outline-primary btn-sm" onclick="openEditTransactionModal(${t.id})" title="管理發票與收款">編輯</button>
+        <button class="btn btn-sm action-icon-btn" onclick="openEditTransactionModal(${t.id})" title="管理發票與收款" aria-label="管理發票與收款">✏️</button>
       </td>
     `;
     tbody.appendChild(tr);
@@ -864,9 +864,9 @@ function renderCustomersTable(customers) {
         <div class="small text-muted">${formatDateTime(c.updatedAt || c.createdAt)}</div>
       </td>
       <td class="text-end">
-        <div class="btn-group btn-group-sm">
-          <button class="btn btn-outline-primary" onclick="openEditCustomerModal(${c.id})" title="編輯客戶">✏️ 編輯</button>
-          <button class="btn btn-outline-danger" onclick="confirmDeleteCustomer(${c.id}, '${c.customerName}')" title="刪除客戶">🗑️</button>
+        <div class="btn-group btn-group-sm action-icon-group">
+          <button class="btn action-icon-btn" onclick="openEditCustomerModal(${c.id})" title="編輯客戶" aria-label="編輯客戶">✏️</button>
+          <button class="btn action-icon-btn" onclick="confirmDeleteCustomer(${c.id}, '${c.customerName}')" title="刪除客戶" aria-label="刪除客戶">🗑️</button>
         </div>
       </td>
     `;
@@ -1022,9 +1022,9 @@ function renderVendorsTable(vendors) {
         <div class="small text-muted">${formatDateTime(v.updatedAt || v.createdAt)}</div>
       </td>
       <td class="text-end">
-        <div class="btn-group btn-group-sm">
-          <button class="btn btn-outline-primary" onclick="openEditVendorModal(${v.id})" title="編輯廠商">✏️ 編輯</button>
-          <button class="btn btn-outline-danger" onclick="confirmDeleteVendor(${v.id}, '${v.vendorName}')" title="刪除廠商">🗑️</button>
+        <div class="btn-group btn-group-sm action-icon-group">
+          <button class="btn action-icon-btn" onclick="openEditVendorModal(${v.id})" title="編輯廠商" aria-label="編輯廠商">✏️</button>
+          <button class="btn action-icon-btn" onclick="confirmDeleteVendor(${v.id}, '${v.vendorName}')" title="刪除廠商" aria-label="刪除廠商">🗑️</button>
         </div>
       </td>
     `;
@@ -1196,9 +1196,9 @@ function renderProductsTable(products) {
         <div class="small text-muted">${formatDateTime(p.updatedAt || p.createdAt)}</div>
       </td>
       <td class="text-end">
-        <div class="btn-group btn-group-sm">
-          <button class="btn btn-outline-primary" onclick="openEditProductModal(${p.id})" title="編輯產品">✏️ 編輯</button>
-          <button class="btn btn-outline-danger" onclick="confirmDeleteProduct(${p.id}, '${p.productName}')" title="刪除產品">🗑️</button>
+        <div class="btn-group btn-group-sm action-icon-group">
+          <button class="btn action-icon-btn" onclick="openEditProductModal(${p.id})" title="編輯產品" aria-label="編輯產品">✏️</button>
+          <button class="btn action-icon-btn" onclick="confirmDeleteProduct(${p.id}, '${p.productName}')" title="刪除產品" aria-label="刪除產品">🗑️</button>
         </div>
       </td>
     `;
@@ -1446,12 +1446,12 @@ function renderQuotationsTable(quotations) {
         <div class="small text-muted">${formatDateTime(q.updatedAt || q.createdAt)}</div>
       </td>
       <td class="text-end">
-        <div class="btn-group btn-group-sm">
-          <button class="btn btn-outline-secondary" onclick="openViewQuotationModal(${q.id})" title="檢視正式報價單">👁️</button>
-          ${q.status === 'ACCEPTED' && !q.hasTransaction ? `<button class="btn btn-outline-success" onclick="convertToTransaction(${q.id})" title="轉為交易單">💳 轉交易</button>` : ''}
-          <button class="btn btn-outline-primary" onclick="openEditQuotationModal(${q.id})" title="編輯報價單">✏️</button>
-          ${!q.hasTransaction ? `<button class="btn btn-outline-warning" onclick="reviseQuotation(${q.id})" title="拒絕原報價單並複製為新草稿">🔁 更改</button>` : ''}
-          <button class="btn btn-outline-danger" onclick="confirmDeleteQuotation(${q.id}, '${q.quotationNumber}')" title="刪除報價單">🗑️</button>
+        <div class="btn-group btn-group-sm action-icon-group">
+          <button class="btn action-icon-btn" onclick="openViewQuotationModal(${q.id})" title="檢視正式報價單" aria-label="檢視正式報價單">👁️</button>
+          ${q.status === 'ACCEPTED' && !q.hasTransaction ? `<button class="btn action-icon-btn" onclick="convertToTransaction(${q.id})" title="轉為交易單" aria-label="轉為交易單">💳</button>` : ''}
+          <button class="btn action-icon-btn" onclick="openEditQuotationModal(${q.id})" title="編輯報價單" aria-label="編輯報價單">✏️</button>
+          ${!q.hasTransaction ? `<button class="btn action-icon-btn" onclick="reviseQuotation(${q.id})" title="拒絕原報價單並複製為新草稿" aria-label="更改報價單">🔁</button>` : ''}
+          <button class="btn action-icon-btn" onclick="confirmDeleteQuotation(${q.id}, '${q.quotationNumber}')" title="刪除報價單" aria-label="刪除報價單">🗑️</button>
         </div>
       </td>
     `;
@@ -2162,9 +2162,9 @@ function renderTransactionsTable(transactions) {
         <div class="small text-muted">${formatDateTime(t.updatedAt || t.createdAt)}</div>
       </td>
       <td class="text-end">
-        <div class="btn-group btn-group-sm">
-          <button class="btn btn-outline-primary" onclick="openEditTransactionModal(${t.id})" title="管理交易與發票">✏️ 編輯發票</button>
-          <button class="btn btn-outline-danger" onclick="confirmDeleteTransaction(${t.id}, '${t.transactionNumber}')" title="刪除交易">🗑️</button>
+        <div class="btn-group btn-group-sm action-icon-group">
+          <button class="btn action-icon-btn" onclick="openEditTransactionModal(${t.id})" title="管理交易與發票" aria-label="管理交易與發票">✏️</button>
+          <button class="btn action-icon-btn" onclick="confirmDeleteTransaction(${t.id}, '${t.transactionNumber}')" title="刪除交易" aria-label="刪除交易">🗑️</button>
         </div>
       </td>
     `;
@@ -2725,9 +2725,9 @@ function renderUsersTable(users) {
         <div class="small text-muted">${formatDateTime(u.updatedAt || u.createdAt)}</div>
       </td>
       <td class="text-end">
-        <div class="btn-group btn-group-sm">
-          <button class="btn btn-outline-primary" onclick="openEditUserModal(${u.id})" title="編輯權限">✏️ 編輯</button>
-          ${u.id !== 1 ? `<button class="btn btn-outline-danger" onclick="confirmDeleteUser(${u.id}, '${u.name}')" title="刪除使用者">🗑️</button>` : ''}
+        <div class="btn-group btn-group-sm action-icon-group">
+          <button class="btn action-icon-btn" onclick="openEditUserModal(${u.id})" title="編輯權限" aria-label="編輯權限">✏️</button>
+          ${u.id !== 1 ? `<button class="btn action-icon-btn" onclick="confirmDeleteUser(${u.id}, '${u.name}')" title="刪除使用者" aria-label="刪除使用者">🗑️</button>` : ''}
         </div>
       </td>
     `;

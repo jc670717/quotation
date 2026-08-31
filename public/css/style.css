@@ -225,6 +225,25 @@ body {
   color: var(--primary-color);
 }
 
+/* 所有列表操作統一採中性單色外框，實際功能以滑鼠提示與 aria-label 說明。 */
+.action-icon-btn {
+  min-width: 2.3rem;
+  color: #475569 !important;
+  background-color: #ffffff !important;
+  border-color: #94a3b8 !important;
+}
+
+.action-icon-btn:hover,
+.action-icon-btn:focus-visible {
+  color: #0f172a !important;
+  background-color: #f1f5f9 !important;
+  border-color: #64748b !important;
+}
+
+.action-icon-group .action-icon-btn + .action-icon-btn {
+  margin-left: -1px;
+}
+
 /* 狀態標籤樣式 (Refined Pill Badges - 高對比度與清晰識別) */
 .badge-status,
 .badge-draft,
