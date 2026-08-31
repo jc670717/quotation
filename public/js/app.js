@@ -664,6 +664,7 @@ async function loadDashboard() {
 
   // 渲染最近報價單
   if (quotationsRes.success && Array.isArray(quotationsRes.data)) {
+    appState.quotations = quotationsRes.data;
     renderDashboardRecentQuotations(quotationsRes.data);
   } else {
     renderDashboardRequestFailure('dashboardRecentQuotationsTbody', 6, quotationsRes.message);
@@ -671,6 +672,7 @@ async function loadDashboard() {
 
   // 渲染最近交易單
   if (transactionsRes.success && Array.isArray(transactionsRes.data)) {
+    appState.transactions = transactionsRes.data;
     renderDashboardRecentTransactions(transactionsRes.data.slice(0, 5));
   } else {
     renderDashboardRequestFailure('dashboardRecentTransactionsTbody', 5, transactionsRes.message);
@@ -775,9 +777,9 @@ function renderDashboardRecentQuotations(quotations) {
       <td><span class="text-success fw-bold">${formatCurrency(profit)}</span> <small class="text-muted">(${margin}%)</small></td>
       <td>${statusBadges[q.status] || q.status}</td>
       <td class="text-end">
-        <div class="btn-group btn-group-sm">
-          <button class="btn btn-outline-secondary" onclick="openViewQuotationModal(${q.id})" title="檢視報價單">👁️</button>
-          ${q.status !== 'ACCEPTED' ? `<button class="btn btn-outline-success" onclick="convertToTransaction(${q.id})" title="一鍵轉交易">💳 轉交易</button>` : ''}
+        <div class="btn-group btn-group-sm action-icon-group">
+          <button class="btn action-icon-btn" onclick="openViewQuotationModal(${q.id})" title="檢視報價單" aria-label="檢視報價單">👁️</button>
+          ${q.status === 'ACCEPTED' && !q.hasTransaction ? `<button class="btn action-icon-btn" onclick="convertToTransaction(${q.id})" title="轉為交易單" aria-label="轉為交易單">💳</button>` : ''}
         </div>
       </td>
     `;
@@ -814,7 +816,7 @@ function renderDashboardRecentTransactions(transactions) {
       </td>
       <td>${paymentBadges[t.paymentStatus] || t.paymentStatus}</td>
       <td class="text-end">
-        <button class="btn btn-outline-primary btn-sm" onclick="openEditTransactionModal(${t.id})" title="管理發票與收款">編輯</button>
+        <button class="btn btn-sm action-icon-btn" onclick="openEditTransactionModal(${t.id})" title="管理發票與收款" aria-label="管理發票與收款">✏️</button>
       </td>
     `;
     tbody.appendChild(tr);
@@ -864,9 +866,9 @@ function renderCustomersTable(customers) {
         <div class="small text-muted">${formatDateTime(c.updatedAt || c.createdAt)}</div>
       </td>
       <td class="text-end">
-        <div class="btn-group btn-group-sm">
-          <button class="btn btn-outline-primary" onclick="openEditCustomerModal(${c.id})" title="編輯客戶">✏️ 編輯</button>
-          <button class="btn btn-outline-danger" onclick="confirmDeleteCustomer(${c.id}, '${c.customerName}')" title="刪除客戶">🗑️</button>
+        <div class="btn-group btn-group-sm action-icon-group">
+          <button class="btn action-icon-btn" onclick="openEditCustomerModal(${c.id})" title="編輯客戶" aria-label="編輯客戶">✏️</button>
+          <button class="btn action-icon-btn" onclick="confirmDeleteCustomer(${c.id}, '${c.customerName}')" title="刪除客戶" aria-label="刪除客戶">🗑️</button>
         </div>
       </td>
     `;
@@ -1022,9 +1024,9 @@ function renderVendorsTable(vendors) {
         <div class="small text-muted">${formatDateTime(v.updatedAt || v.createdAt)}</div>
       </td>
       <td class="text-end">
-        <div class="btn-group btn-group-sm">
-          <button class="btn btn-outline-primary" onclick="openEditVendorModal(${v.id})" title="編輯廠商">✏️ 編輯</button>
-          <button class="btn btn-outline-danger" onclick="confirmDeleteVendor(${v.id}, '${v.vendorName}')" title="刪除廠商">🗑️</button>
+        <div class="btn-group btn-group-sm action-icon-group">
+          <button class="btn action-icon-btn" onclick="openEditVendorModal(${v.id})" title="編輯廠商" aria-label="編輯廠商">✏️</button>
+          <button class="btn action-icon-btn" onclick="confirmDeleteVendor(${v.id}, '${v.vendorName}')" title="刪除廠商" aria-label="刪除廠商">🗑️</button>
         </div>
       </td>
     `;
@@ -1165,8 +1167,8 @@ function renderProductsTable(products) {
     const margin = price > 0 ? ((profit / price) * 100).toFixed(1) : '0.0';
 
     // 縮圖
-    const thumbHtml = p.imageUrl ? 
-      `<img src="${p.imageUrl}" alt="${p.productName}" class="rounded border" style="width: 48px; height: 48px; object-fit: cover;" />` :
+    const thumbHtml = p.imageUrl ?
+      `<button type="button" class="btn p-0 border-0 bg-transparent product-image-preview-trigger" onclick="openProductImagePreview(${p.id})" title="查看產品圖片" aria-label="查看 ${p.productName} 的產品圖片"><img src="${p.imageUrl}" alt="${p.productName}" class="rounded border" style="width: 48px; height: 48px; object-fit: cover;" /></button>` :
       `<div class="bg-light rounded border text-muted d-flex align-items-center justify-content-center small" style="width: 48px; height: 48px;">📦</div>`;
 
     tr.innerHTML = `
@@ -1196,14 +1198,29 @@ function renderProductsTable(products) {
         <div class="small text-muted">${formatDateTime(p.updatedAt || p.createdAt)}</div>
       </td>
       <td class="text-end">
-        <div class="btn-group btn-group-sm">
-          <button class="btn btn-outline-primary" onclick="openEditProductModal(${p.id})" title="編輯產品">✏️ 編輯</button>
-          <button class="btn btn-outline-danger" onclick="confirmDeleteProduct(${p.id}, '${p.productName}')" title="刪除產品">🗑️</button>
+        <div class="btn-group btn-group-sm action-icon-group">
+          <button class="btn action-icon-btn" onclick="openEditProductModal(${p.id})" title="編輯產品" aria-label="編輯產品">✏️</button>
+          <button class="btn action-icon-btn" onclick="confirmDeleteProduct(${p.id}, '${p.productName}')" title="刪除產品" aria-label="刪除產品">🗑️</button>
         </div>
       </td>
     `;
     tbody.appendChild(tr);
   });
+}
+
+function openProductImagePreview(productId) {
+  const product = appState.products.find(item => item.id === productId);
+  if (!product?.imageUrl) return;
+
+  const modalEl = document.getElementById('productImagePreviewModal');
+  const imageEl = document.getElementById('productImagePreview');
+  const titleEl = document.getElementById('productImagePreviewTitle');
+  if (!modalEl || !imageEl || !titleEl) return;
+
+  titleEl.textContent = `產品圖片：${product.productName}`;
+  imageEl.src = product.imageUrl;
+  imageEl.alt = product.productName;
+  bootstrap.Modal.getOrCreateInstance(modalEl).show();
 }
 
 function handleProductSearch() {
@@ -1446,11 +1463,12 @@ function renderQuotationsTable(quotations) {
         <div class="small text-muted">${formatDateTime(q.updatedAt || q.createdAt)}</div>
       </td>
       <td class="text-end">
-        <div class="btn-group btn-group-sm">
-          <button class="btn btn-outline-secondary" onclick="openViewQuotationModal(${q.id})" title="檢視正式報價單">👁️</button>
-          ${q.status !== 'ACCEPTED' ? `<button class="btn btn-outline-success" onclick="convertToTransaction(${q.id})" title="轉為交易單">💳 轉交易</button>` : ''}
-          <button class="btn btn-outline-primary" onclick="openEditQuotationModal(${q.id})" title="編輯報價單">✏️</button>
-          <button class="btn btn-outline-danger" onclick="confirmDeleteQuotation(${q.id}, '${q.quotationNumber}')" title="刪除報價單">🗑️</button>
+        <div class="btn-group btn-group-sm action-icon-group">
+          <button class="btn action-icon-btn" onclick="openViewQuotationModal(${q.id})" title="檢視正式報價單" aria-label="檢視正式報價單">👁️</button>
+          ${q.status === 'ACCEPTED' && !q.hasTransaction ? `<button class="btn action-icon-btn" onclick="convertToTransaction(${q.id})" title="轉為交易單" aria-label="轉為交易單">💳</button>` : ''}
+          <button class="btn action-icon-btn" onclick="openEditQuotationModal(${q.id})" title="編輯報價單" aria-label="編輯報價單">✏️</button>
+          ${!q.hasTransaction ? `<button class="btn action-icon-btn" onclick="reviseQuotation(${q.id})" title="拒絕原報價單並複製為新草稿" aria-label="更改報價單">🔁</button>` : ''}
+          <button class="btn action-icon-btn" onclick="confirmDeleteQuotation(${q.id}, '${q.quotationNumber}')" title="刪除報價單" aria-label="刪除報價單">🗑️</button>
         </div>
       </td>
     `;
@@ -1472,6 +1490,32 @@ function handleQuotationSearch() {
     );
   });
   renderQuotationsTable(filtered);
+}
+
+async function reviseQuotation(quotationId) {
+  const quotation = appState.quotations.find(item => item.id === quotationId);
+  if (!quotation) {
+    showAlert('找不到要更改的報價單', 'danger');
+    return;
+  }
+
+  const confirmed = window.confirm(
+    `確定要更改報價單「${quotation.quotationNumber}」嗎？\n\n系統會將原報價單標示為「已拒絕」，並複製一張新的草稿供你修改。`
+  );
+  if (!confirmed) return;
+
+  const response = await fetchApi(`/api/quotations/${quotationId}/revise`, {
+    method: 'POST',
+    body: JSON.stringify({ operator: appState.currentUser.name })
+  });
+  if (!response.success || !response.data?.id) {
+    showAlert(response.message || '建立更改版報價單失敗', 'danger');
+    return;
+  }
+
+  showAlert(response.message || '已建立新的報價單草稿', 'success');
+  await loadQuotations();
+  await openEditQuotationModal(response.data.id);
 }
 
 // 報價單開立主體公司切換：公司資料控制抬頭與條款，聯絡窗口固定採目前登入者。
@@ -1536,14 +1580,42 @@ function handleQuotationCustomerSelect(customerId) {
   if (!customerId) return;
   const c = appState.customers.find(item => item.id === parseInt(customerId, 10));
   if (!c) return;
+  applyQuotationCustomerData(c);
+}
 
-  document.getElementById('q_customer_id').value = c.id;
-  document.getElementById('q_customer_name').value = c.customerName;
-  document.getElementById('q_customer_tax_id').value = c.taxId || '';
-  document.getElementById('q_customer_contact').value = c.contactPerson || '';
-  document.getElementById('q_customer_phone').value = c.phone || '';
-  document.getElementById('q_customer_email').value = c.email || '';
-  document.getElementById('q_customer_address').value = c.address || '';
+function applyQuotationCustomerData(customer) {
+  document.getElementById('q_customer_id').value = customer.id;
+  document.getElementById('q_customer_name').value = customer.customerName;
+  document.getElementById('q_customer_tax_id').value = customer.taxId || '';
+  document.getElementById('q_customer_contact').value = customer.contactPerson || '';
+  document.getElementById('q_customer_phone').value = customer.phone || '';
+  document.getElementById('q_customer_email').value = customer.email || '';
+  document.getElementById('q_customer_address').value = customer.address || '';
+}
+
+// 統編輸入滿 8 碼時，直接向 API 查詢，避免初始客戶清單未同步導致無法帶入。
+async function handleQuotationCustomerTaxIdInput(inputEl) {
+  const normalizedTaxId = inputEl.value.replace(/\D/g, '').slice(0, 8);
+  if (inputEl.value !== normalizedTaxId) inputEl.value = normalizedTaxId;
+  if (normalizedTaxId.length !== 8) return;
+
+  let matchedCustomer = appState.customers.find(customer =>
+    String(customer.taxId || '').replace(/\D/g, '') === normalizedTaxId
+  );
+  if (!matchedCustomer) {
+    const response = await fetchApi(`/api/customers?search=${encodeURIComponent(normalizedTaxId)}&limit=100`);
+    if (inputEl.value !== normalizedTaxId) return;
+    if (response.success && Array.isArray(response.data)) {
+      matchedCustomer = response.data.find(customer =>
+        String(customer.taxId || '').replace(/\D/g, '') === normalizedTaxId
+      );
+    }
+  }
+  if (!matchedCustomer) return;
+
+  const customerSelect = document.getElementById('q_customer_select');
+  if (customerSelect) customerSelect.value = String(matchedCustomer.id);
+  applyQuotationCustomerData(matchedCustomer);
 }
 
 // 動態增加報價單明細列
@@ -1556,9 +1628,12 @@ function addQuotationItemRow(item = null) {
   rowDiv.className = 'item-row p-3 mb-2';
   rowDiv.id = rowId;
 
-  // 產品下拉選單選項
+  // 報價只能新選銷售中的產品；停售品項仍保留於既有明細，避免編輯舊報價時遺失關聯。
+  const originalProduct = item?.productId ? appState.products.find(p => p.id === item.productId) : null;
+  const isOriginalProductDiscontinued = originalProduct && originalProduct.status !== 'ACTIVE';
+  const originalProductId = isOriginalProductDiscontinued ? originalProduct.id : '';
   let productOptions = '<option value="">-- 關聯現有產品 (選填) --</option>';
-  appState.products.forEach(p => {
+  appState.products.filter(p => p.status === 'ACTIVE').forEach(p => {
     productOptions += `<option value="${p.id}" data-price="${p.unitPrice}" data-cost="${p.costPrice}" data-desc="${p.description || ''}" ${item && item.productId === p.id ? 'selected' : ''}>${p.productName} [售: ${formatCurrency(p.unitPrice)}]</option>`;
   });
 
@@ -1572,9 +1647,10 @@ function addQuotationItemRow(item = null) {
   rowDiv.innerHTML = `
     <div class="row g-2 align-items-center">
       <div class="col-12 col-md-4">
-        <select class="form-select form-select-sm mb-1 item-prod-select" onchange="handleQuotationItemProductChange('${rowId}', this)">
+        <select class="form-select form-select-sm mb-1 item-prod-select" data-original-product-id="${originalProductId}" onchange="handleQuotationItemProductChange('${rowId}', this)">
           ${productOptions}
         </select>
+        ${isOriginalProductDiscontinued ? '<div class="form-text text-warning">原關聯產品已停售，保留既有明細；可改選銷售中產品。</div>' : ''}
         <input type="text" class="form-control form-control-sm item-name-input" required placeholder="品項名稱 *" value="${itemName}" />
       </div>
       <div class="col-12 col-md-3">
@@ -1608,7 +1684,11 @@ function addQuotationItemRow(item = null) {
 
 function handleQuotationItemProductChange(rowId, selectEl) {
   const selectedOpt = selectEl.options[selectEl.selectedIndex];
-  if (!selectedOpt || !selectedOpt.value) return;
+  if (!selectedOpt || !selectedOpt.value) {
+    // 使用者主動清除選擇時，不再保留舊有停售產品關聯。
+    selectEl.dataset.originalProductId = '';
+    return;
+  }
 
   const row = document.getElementById(rowId);
   if (!row) return;
@@ -1782,7 +1862,9 @@ async function handleSaveQuotation(event) {
   const items = [];
   rows.forEach((row, idx) => {
     const prodSelect = row.querySelector('.item-prod-select');
-    const prodId = prodSelect && prodSelect.value ? parseInt(prodSelect.value, 10) : null;
+    // 已停售產品不會列在下拉選單，但編輯舊報價且未改動明細時仍須保留原有關聯。
+    const productIdValue = prodSelect?.value || prodSelect?.dataset.originalProductId || '';
+    const prodId = productIdValue ? parseInt(productIdValue, 10) : null;
     const name = row.querySelector('.item-name-input')?.value.trim() || '未命名品項';
     const desc = row.querySelector('.item-desc-input')?.value.trim() || '';
     const qty = parseFloat(row.querySelector('.item-qty-input')?.value) || 1;
@@ -1847,8 +1929,13 @@ async function convertToTransaction(quotationId) {
   const q = appState.quotations.find(item => item.id === quotationId);
   const qNum = q ? q.quotationNumber : `ID #${quotationId}`;
 
+  if (q && q.status !== 'ACCEPTED') {
+    showAlert('只有已核准的報價單可以轉為交易單', 'warning');
+    return;
+  }
+
   const isConfirmed = window.confirm(
-    `確定要將報價單「${qNum}」轉為正式交易嗎？\n\n轉換後會建立交易單，並將報價單狀態更新為「已核准」。`
+    `確定要將已核准報價單「${qNum}」轉為正式交易嗎？\n\n轉換後會建立正式交易單。`
   );
   if (!isConfirmed) return;
 
@@ -1887,7 +1974,7 @@ async function openViewQuotationModal(id) {
   const modalEl = document.getElementById('viewQuotationModal');
   modalEl.setAttribute('data-active-quotation-id', q.id);
   const convertButton = document.getElementById('viewQConvertTxBtn');
-  if (convertButton) convertButton.classList.toggle('d-none', q.status === 'ACCEPTED');
+  if (convertButton) convertButton.classList.toggle('d-none', q.status !== 'ACCEPTED' || q.hasTransaction);
 
   // 尋找所屬公司資料 (含 LOGO)
   const comp = appState.allCompanies.find(c => c.id === q.companyId) || appState.allCompanies[0] || {};
@@ -2092,9 +2179,9 @@ function renderTransactionsTable(transactions) {
         <div class="small text-muted">${formatDateTime(t.updatedAt || t.createdAt)}</div>
       </td>
       <td class="text-end">
-        <div class="btn-group btn-group-sm">
-          <button class="btn btn-outline-primary" onclick="openEditTransactionModal(${t.id})" title="管理交易與發票">✏️ 編輯發票</button>
-          <button class="btn btn-outline-danger" onclick="confirmDeleteTransaction(${t.id}, '${t.transactionNumber}')" title="刪除交易">🗑️</button>
+        <div class="btn-group btn-group-sm action-icon-group">
+          <button class="btn action-icon-btn" onclick="openEditTransactionModal(${t.id})" title="管理交易與發票" aria-label="管理交易與發票">✏️</button>
+          <button class="btn action-icon-btn" onclick="confirmDeleteTransaction(${t.id}, '${t.transactionNumber}')" title="刪除交易" aria-label="刪除交易">🗑️</button>
         </div>
       </td>
     `;
@@ -2241,9 +2328,21 @@ function openCreateTransactionModal() {
   modal.show();
 }
 
-function openEditTransactionModal(id) {
-  const t = appState.transactions.find(item => item.id === id);
-  if (!t) return;
+async function openEditTransactionModal(id) {
+  // 首頁只載入交易摘要；編輯前重新讀取單筆資料，確保發票明細與收款狀態完整且最新。
+  const detailResponse = await fetchApi(`/api/transactions/${id}`);
+  if (!detailResponse.success || !detailResponse.data) {
+    showAlert(detailResponse.message || '讀取交易與發票明細失敗', 'danger');
+    return;
+  }
+  const t = detailResponse.data;
+
+  const stateIndex = appState.transactions.findIndex(item => item.id === id);
+  if (stateIndex >= 0) {
+    appState.transactions[stateIndex] = t;
+  } else {
+    appState.transactions.push(t);
+  }
 
   document.getElementById('tx_id').value = t.id;
   document.getElementById('tx_quotation_id').value = t.quotationId || '';
@@ -2655,9 +2754,9 @@ function renderUsersTable(users) {
         <div class="small text-muted">${formatDateTime(u.updatedAt || u.createdAt)}</div>
       </td>
       <td class="text-end">
-        <div class="btn-group btn-group-sm">
-          <button class="btn btn-outline-primary" onclick="openEditUserModal(${u.id})" title="編輯權限">✏️ 編輯</button>
-          ${u.id !== 1 ? `<button class="btn btn-outline-danger" onclick="confirmDeleteUser(${u.id}, '${u.name}')" title="刪除使用者">🗑️</button>` : ''}
+        <div class="btn-group btn-group-sm action-icon-group">
+          <button class="btn action-icon-btn" onclick="openEditUserModal(${u.id})" title="編輯權限" aria-label="編輯權限">✏️</button>
+          ${u.id !== 1 ? `<button class="btn action-icon-btn" onclick="confirmDeleteUser(${u.id}, '${u.name}')" title="刪除使用者" aria-label="刪除使用者">🗑️</button>` : ''}
         </div>
       </td>
     `;

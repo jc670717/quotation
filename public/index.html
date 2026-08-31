@@ -1029,7 +1029,7 @@
                 </div>
                 <div class="col-12 col-md-4">
                   <label class="form-label fw-semibold">客戶統一編號</label>
-                  <input type="text" id="q_customer_tax_id" class="form-control" placeholder="客戶統編" />
+                  <input type="text" id="q_customer_tax_id" class="form-control" placeholder="輸入 8 碼統編可自動帶入客戶資料" inputmode="numeric" maxlength="8" oninput="handleQuotationCustomerTaxIdInput(this)" />
                 </div>
 
                 <div class="col-12 col-md-3">
@@ -1080,6 +1080,16 @@
                   <button type="button" class="btn btn-outline-primary btn-sm" onclick="addQuotationItemRow()">
                     ➕ 新增品項列
                   </button>
+                </div>
+
+                <div class="row g-2 px-3 mb-1 small fw-semibold text-secondary d-none d-md-flex" aria-hidden="true">
+                  <div class="col-md-4">產品／品項</div>
+                  <div class="col-md-3">規格與明細描述</div>
+                  <div class="col-md-1 text-center">數量</div>
+                  <div class="col-md-1 text-center">成本</div>
+                  <div class="col-md-1 text-center">售價</div>
+                  <div class="col-md-1 text-end">小計</div>
+                  <div class="col-md-1 text-end">操作</div>
                 </div>
 
                 <div id="quotationItemsContainer" class="items-scroll-box">
@@ -1484,6 +1494,21 @@
                 <button type="submit" class="btn btn-primary btn-touch px-4">儲存產品</button>
               </div>
             </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 產品圖片預覽 Modal -->
+    <div class="modal fade" id="productImagePreviewModal" tabindex="-1" aria-labelledby="productImagePreviewTitle" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title fw-bold" id="productImagePreviewTitle">產品圖片預覽</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="關閉"></button>
+          </div>
+          <div class="modal-body text-center bg-light">
+            <img id="productImagePreview" class="img-fluid rounded" alt="產品圖片預覽" style="max-height: 70vh; object-fit: contain;" />
           </div>
         </div>
       </div>
