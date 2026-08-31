@@ -1546,6 +1546,22 @@ function handleQuotationCustomerSelect(customerId) {
   document.getElementById('q_customer_address').value = c.address || '';
 }
 
+// 統編輸入滿 8 碼時，帶入系統內已建立的相符客戶；未找到時保留手動輸入內容。
+function handleQuotationCustomerTaxIdInput(inputEl) {
+  const normalizedTaxId = inputEl.value.replace(/\D/g, '').slice(0, 8);
+  if (inputEl.value !== normalizedTaxId) inputEl.value = normalizedTaxId;
+  if (normalizedTaxId.length !== 8) return;
+
+  const matchedCustomer = appState.customers.find(customer =>
+    String(customer.taxId || '').replace(/\D/g, '') === normalizedTaxId
+  );
+  if (!matchedCustomer) return;
+
+  const customerSelect = document.getElementById('q_customer_select');
+  if (customerSelect) customerSelect.value = String(matchedCustomer.id);
+  handleQuotationCustomerSelect(matchedCustomer.id);
+}
+
 // 動態增加報價單明細列
 function addQuotationItemRow(item = null) {
   const container = document.getElementById('quotationItemsContainer');
