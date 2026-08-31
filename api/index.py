@@ -1605,6 +1605,7 @@ def getQuotations(
                         tax_amount::float AS "taxAmount", discount_amount::float AS "discountAmount",
                         total_amount::float AS "totalAmount", total_cost::float AS "totalCost",
                         estimated_profit::float AS "estimatedProfit", notes,
+                        EXISTS (SELECT 1 FROM transactions tx WHERE tx.quotation_id = quotations.id) AS "hasTransaction",
                         created_by AS "createdBy", updated_by AS "updatedBy",
                         created_at::text AS "createdAt", updated_at::text AS "updatedAt"
                     FROM quotations
@@ -1656,6 +1657,7 @@ def getQuotationById(quotationId: int):
                         tax_amount::float AS "taxAmount", discount_amount::float AS "discountAmount",
                         total_amount::float AS "totalAmount", total_cost::float AS "totalCost",
                         estimated_profit::float AS "estimatedProfit", notes,
+                        EXISTS (SELECT 1 FROM transactions tx WHERE tx.quotation_id = quotations.id) AS "hasTransaction",
                         created_by AS "createdBy", updated_by AS "updatedBy",
                         created_at::text AS "createdAt", updated_at::text AS "updatedAt"
                     FROM quotations
@@ -2061,6 +2063,13 @@ def convertQuotationToTransaction(quotationId: int):
                 if not q:
                     return createApiResponse(isSuccess=False, message="找不到指定的報價單", statusCode=404)
 
+                if q["status"] != "ACCEPTED":
+                    return createApiResponse(
+                        isSuccess=False,
+                        message="只有已核准的報價單可以轉為交易單",
+                        statusCode=status.HTTP_409_CONFLICT
+                    )
+
                 cur.execute("SELECT id FROM transactions WHERE quotation_id = %s LIMIT 1;", (quotationId,))
                 if cur.fetchone():
                     return createApiResponse(
@@ -2079,8 +2088,6 @@ def convertQuotationToTransaction(quotationId: int):
                 totalCost = sum(float(it["quantity"]) * float(it["cost_price"]) for it in items)
 
                 operator = q.get("updated_by") or q.get("created_by") or "系統使用者"
-
-                cur.execute("UPDATE quotations SET status = 'ACCEPTED', updated_by = %s, updated_at = CURRENT_TIMESTAMP WHERE id = %s;", (operator, quotationId))
 
                 txNumber = f"TX-{date.today().strftime('%Y%m%d')}-{uuid4().hex[:10].upper()}"
                 cur.execute("""

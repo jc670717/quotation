@@ -777,7 +777,7 @@ function renderDashboardRecentQuotations(quotations) {
       <td class="text-end">
         <div class="btn-group btn-group-sm">
           <button class="btn btn-outline-secondary" onclick="openViewQuotationModal(${q.id})" title="檢視報價單">👁️</button>
-          ${q.status !== 'ACCEPTED' ? `<button class="btn btn-outline-success" onclick="convertToTransaction(${q.id})" title="一鍵轉交易">💳 轉交易</button>` : ''}
+          ${q.status === 'ACCEPTED' && !q.hasTransaction ? `<button class="btn btn-outline-success" onclick="convertToTransaction(${q.id})" title="轉為交易單">💳 轉交易</button>` : ''}
         </div>
       </td>
     `;
@@ -1448,7 +1448,7 @@ function renderQuotationsTable(quotations) {
       <td class="text-end">
         <div class="btn-group btn-group-sm">
           <button class="btn btn-outline-secondary" onclick="openViewQuotationModal(${q.id})" title="檢視正式報價單">👁️</button>
-          ${q.status !== 'ACCEPTED' ? `<button class="btn btn-outline-success" onclick="convertToTransaction(${q.id})" title="轉為交易單">💳 轉交易</button>` : ''}
+          ${q.status === 'ACCEPTED' && !q.hasTransaction ? `<button class="btn btn-outline-success" onclick="convertToTransaction(${q.id})" title="轉為交易單">💳 轉交易</button>` : ''}
           <button class="btn btn-outline-primary" onclick="openEditQuotationModal(${q.id})" title="編輯報價單">✏️</button>
           <button class="btn btn-outline-danger" onclick="confirmDeleteQuotation(${q.id}, '${q.quotationNumber}')" title="刪除報價單">🗑️</button>
         </div>
@@ -1847,8 +1847,13 @@ async function convertToTransaction(quotationId) {
   const q = appState.quotations.find(item => item.id === quotationId);
   const qNum = q ? q.quotationNumber : `ID #${quotationId}`;
 
+  if (q && q.status !== 'ACCEPTED') {
+    showAlert('只有已核准的報價單可以轉為交易單', 'warning');
+    return;
+  }
+
   const isConfirmed = window.confirm(
-    `確定要將報價單「${qNum}」轉為正式交易嗎？\n\n轉換後會建立交易單，並將報價單狀態更新為「已核准」。`
+    `確定要將已核准報價單「${qNum}」轉為正式交易嗎？\n\n轉換後會建立正式交易單。`
   );
   if (!isConfirmed) return;
 
@@ -1887,7 +1892,7 @@ async function openViewQuotationModal(id) {
   const modalEl = document.getElementById('viewQuotationModal');
   modalEl.setAttribute('data-active-quotation-id', q.id);
   const convertButton = document.getElementById('viewQConvertTxBtn');
-  if (convertButton) convertButton.classList.toggle('d-none', q.status === 'ACCEPTED');
+  if (convertButton) convertButton.classList.toggle('d-none', q.status !== 'ACCEPTED' || q.hasTransaction);
 
   // 尋找所屬公司資料 (含 LOGO)
   const comp = appState.allCompanies.find(c => c.id === q.companyId) || appState.allCompanies[0] || {};

@@ -1396,6 +1396,18 @@ function devApiPlugin(): Plugin {
               return;
             }
 
+            if (targetQuotation.status !== 'ACCEPTED') {
+              res.statusCode = 409;
+              res.end(JSON.stringify({ success: false, data: null, message: '只有已核准的報價單可以轉為交易單' }));
+              return;
+            }
+
+            if (transactions.some(t => t.quotationId === qId)) {
+              res.statusCode = 409;
+              res.end(JSON.stringify({ success: false, data: null, message: '此報價單已轉為交易，請至交易管理查看' }));
+              return;
+            }
+
             const bodyPayload = await getBody();
             const operator = bodyPayload.operator || targetQuotation.updatedBy || '系統經辦人';
 
@@ -1408,11 +1420,6 @@ function devApiPlugin(): Plugin {
                 return sum + ((parseFloat(it.quantity) || 1) * cost);
               }, 0);
             }
-
-            // 更新報價單狀態為 ACCEPTED
-            targetQuotation.status = 'ACCEPTED';
-            targetQuotation.updatedBy = operator;
-            targetQuotation.updatedAt = new Date().toISOString();
 
             const newId = transactions.length > 0 ? Math.max(...transactions.map(t => t.id)) + 1 : 1;
             const todayStr = new Date().toISOString().split('T')[0].replace(/-/g, '');
@@ -1624,7 +1631,10 @@ function devApiPlugin(): Plugin {
           const totalPages = Math.ceil(totalRecords / pageSize);
           const offset = (page - 1) * pageSize;
           // 正式清單 API 不含 items；編輯或預覽必須改用 GET /api/quotations/{id}。
-          const paginatedData = filtered.slice(offset, offset + pageSize).map(({ items, ...quotation }) => quotation);
+          const paginatedData = filtered.slice(offset, offset + pageSize).map(({ items, ...quotation }) => ({
+            ...quotation,
+            hasTransaction: transactions.some(t => t.quotationId === quotation.id)
+          }));
 
           res.end(JSON.stringify({
             success: true,
@@ -1652,7 +1662,11 @@ function devApiPlugin(): Plugin {
             res.end(JSON.stringify({ success: false, data: null, message: '找不到該報價單' }));
             return;
           }
-          res.end(JSON.stringify({ success: true, data: item, message: '成功取得報價單詳細資料' }));
+          res.end(JSON.stringify({
+            success: true,
+            data: { ...item, hasTransaction: transactions.some(t => t.quotationId === id) },
+            message: '成功取得報價單詳細資料'
+          }));
           return;
         }
 
