@@ -13,7 +13,7 @@ import base64
 import hashlib
 import hmac
 from uuid import uuid4
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 from contextlib import contextmanager
@@ -409,6 +409,12 @@ class QuotationInput(BaseModel):
     createdBy: Optional[str] = None
     updatedBy: Optional[str] = None
     items: List[QuotationItemInput] = Field(..., min_items=1)
+
+    class Config:
+        extra = "ignore"
+
+class QuotationRevisionInput(BaseModel):
+    operator: Optional[str] = Field(None, max_length=100)
 
     class Config:
         extra = "ignore"
@@ -1584,6 +1590,13 @@ def getQuotations(
 
         with getDbConnection() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # 已核准或已拒絕屬於業務終態，不可因日期經過而改寫歷史決策。
+                cur.execute("""
+                    UPDATE quotations
+                    SET status = 'EXPIRED', updated_at = CURRENT_TIMESTAMP
+                    WHERE COALESCE(expiry_date, valid_until) < CURRENT_DATE
+                      AND status IN ('DRAFT', 'SENT');
+                """)
                 cur.execute(f"SELECT COUNT(*) as total FROM quotations {whereClause};", tuple(params))
                 totalRow = cur.fetchone()
                 totalRecords = totalRow["total"] if totalRow else 0
@@ -1615,6 +1628,7 @@ def getQuotations(
                 """
                 cur.execute(dataQuery, tuple(params + [effectiveLimit, offset]))
                 rows = cur.fetchall()
+            conn.commit()
 
         totalPages = math.ceil(totalRecords / effectiveLimit) if totalRecords > 0 else 1
         return createApiResponse(
@@ -1632,6 +1646,78 @@ def getQuotations(
         )
     except Exception as err:
         return createApiResponse(isSuccess=False, message="讀取報價單清單失敗", errorMessage=str(err), statusCode=500)
+
+
+@app.post("/api/quotations/{quotationId}/revise")
+def reviseQuotation(quotationId: int, payload: QuotationRevisionInput):
+    """拒絕舊報價後，於同一交易內複製一張新的草稿，避免只完成其中一步。"""
+    autoEnsureSchema()
+    operator = payload.operator or "系統使用者"
+    try:
+        with getDbConnection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT * FROM quotations WHERE id = %s FOR UPDATE;", (quotationId,))
+                original = cur.fetchone()
+                if not original:
+                    return createApiResponse(isSuccess=False, message="找不到該報價單", statusCode=404)
+
+                cur.execute("SELECT 1 FROM transactions WHERE quotation_id = %s LIMIT 1;", (quotationId,))
+                if cur.fetchone():
+                    return createApiResponse(isSuccess=False, message="已轉為交易單的報價不可更改，請至交易管理處理", statusCode=409)
+
+                revisionPrefix = f"{original['quotation_number']}-R"
+                cur.execute("SELECT quotation_number FROM quotations WHERE quotation_number LIKE %s FOR UPDATE;", (f"{revisionPrefix}%",))
+                revisionNumbers = [row["quotation_number"] for row in cur.fetchall()]
+                revisionIndexes = [int(match.group(1)) for number in revisionNumbers if (match := re.fullmatch(re.escape(revisionPrefix) + r"(\d+)", number))]
+                newQuotationNumber = f"{revisionPrefix}{max(revisionIndexes, default=0) + 1}"
+                newIssueDate = date.today()
+                newExpiryDate = newIssueDate + timedelta(days=30)
+
+                cur.execute("""
+                    UPDATE quotations
+                    SET status = 'REJECTED', updated_by = %s, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = %s;
+                """, (operator, quotationId))
+                cur.execute("""
+                    INSERT INTO quotations (
+                        quotation_number, company_id, company_name, customer_id, customer_name,
+                        customer_tax_id, customer_contact_person, customer_email, customer_phone,
+                        customer_address, shipping_address, payment_terms, sales_rep, sales_phone, sales_email,
+                        issue_date, expiry_date, valid_until, status, tax_mode, subtotal, tax_rate, tax_amount,
+                        discount_amount, total_amount, total_cost, estimated_profit, notes, created_by, updated_by
+                    ) VALUES (
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                        %s, %s, %s, 'DRAFT', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                    ) RETURNING id;
+                """, (
+                    newQuotationNumber, original["company_id"], original["company_name"], original["customer_id"], original["customer_name"],
+                    original["customer_tax_id"], original["customer_contact_person"], original["customer_email"], original["customer_phone"],
+                    original["customer_address"], original["shipping_address"], original["payment_terms"], original["sales_rep"], original["sales_phone"], original["sales_email"],
+                    newIssueDate, newExpiryDate, newExpiryDate, original["tax_mode"], original["subtotal"], original["tax_rate"], original["tax_amount"],
+                    original["discount_amount"], original["total_amount"], original["total_cost"], original["estimated_profit"], original["notes"], operator, operator
+                ))
+                newQuotationId = cur.fetchone()["id"]
+                cur.execute("""
+                    INSERT INTO quotation_items (
+                        quotation_id, product_id, item_number, item_name, specifications, description, unit,
+                        quantity, cost_price, unit_price, line_total, subtotal, sort_order, notes
+                    )
+                    SELECT %s, product_id, item_number, item_name, specifications, description, unit,
+                           quantity, cost_price, unit_price, line_total, subtotal, sort_order, notes
+                    FROM quotation_items
+                    WHERE quotation_id = %s
+                    ORDER BY sort_order ASC, id ASC;
+                """, (newQuotationId, quotationId))
+            conn.commit()
+
+        return createApiResponse(
+            isSuccess=True,
+            data={"id": newQuotationId, "quotationNumber": newQuotationNumber},
+            message=f"已拒絕原報價單並建立新草稿 {newQuotationNumber}",
+            statusCode=201
+        )
+    except Exception as err:
+        return createApiResponse(isSuccess=False, message="建立更改版報價單失敗", errorMessage=str(err), statusCode=500)
 
 
 @app.get("/api/quotations/{quotationId}")

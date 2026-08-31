@@ -1609,6 +1609,14 @@ function devApiPlugin(): Plugin {
           const pageSize = parseInt(parsedUrl.searchParams.get('limit') || parsedUrl.searchParams.get('pageSize') || '10', 10);
           const search = (parsedUrl.searchParams.get('search') || '').toLowerCase().trim();
           const statusFilter = parsedUrl.searchParams.get('status') || parsedUrl.searchParams.get('statusFilter') || '';
+          const today = new Date().toISOString().slice(0, 10);
+          quotations.forEach((quotation) => {
+            const expiryDate = quotation.expiryDate || quotation.validUntil;
+            if (expiryDate && expiryDate < today && ['DRAFT', 'SENT'].includes(quotation.status)) {
+              quotation.status = 'EXPIRED';
+              quotation.updatedAt = new Date().toISOString();
+            }
+          });
 
           let filtered = quotations.filter((q) => {
             let isMatch = true;
@@ -1666,6 +1674,66 @@ function devApiPlugin(): Plugin {
             success: true,
             data: { ...item, hasTransaction: transactions.some(t => t.quotationId === id) },
             message: '成功取得報價單詳細資料'
+          }));
+          return;
+        }
+
+        const reviseQuotationMatch = url.match(/\/api\/quotations\/(\d+)\/revise$/);
+        if (reviseQuotationMatch && req.method === 'POST') {
+          const id = parseInt(reviseQuotationMatch[1], 10);
+          const targetQuotation = quotations.find((quotation) => quotation.id === id);
+          if (!targetQuotation) {
+            res.statusCode = 404;
+            res.end(JSON.stringify({ success: false, data: null, message: '找不到該報價單' }));
+            return;
+          }
+          if (transactions.some(transaction => transaction.quotationId === id)) {
+            res.statusCode = 409;
+            res.end(JSON.stringify({ success: false, data: null, message: '已轉為交易單的報價不可更改，請至交易管理處理' }));
+            return;
+          }
+
+          const payload = await getBody();
+          const operator = payload.operator || '系統使用者';
+          const revisionPrefix = `${targetQuotation.quotationNumber}-R`;
+          const revisionIndexes = quotations
+            .map(quotation => quotation.quotationNumber)
+            .filter(number => number.startsWith(revisionPrefix))
+            .map(number => Number(number.slice(revisionPrefix.length)))
+            .filter(Number.isInteger);
+          const newQuotationNumber = `${revisionPrefix}${Math.max(0, ...revisionIndexes) + 1}`;
+          const newId = quotations.length > 0 ? Math.max(...quotations.map(quotation => quotation.id)) + 1 : 1;
+          const issueDate = new Date().toISOString().slice(0, 10);
+          const expiryDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+          targetQuotation.status = 'REJECTED';
+          targetQuotation.updatedBy = operator;
+          targetQuotation.updatedAt = new Date().toISOString();
+          const newQuotation = {
+            ...targetQuotation,
+            id: newId,
+            quotationNumber: newQuotationNumber,
+            issueDate,
+            expiryDate,
+            validUntil: expiryDate,
+            status: 'DRAFT',
+            createdBy: operator,
+            updatedBy: operator,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            items: (targetQuotation.items || []).map((item: any, index: number) => ({
+              ...item,
+              id: index + 1,
+              quotationId: newId
+            }))
+          };
+          quotations.unshift(newQuotation);
+          addAuditLog('quotations', '報價單管理', 'REVISE', '更改報價單', newQuotationNumber, targetQuotation.customerName, operator, `原報價單 ${targetQuotation.quotationNumber} 已拒絕，建立新草稿 ${newQuotationNumber}`);
+          res.statusCode = 201;
+          res.end(JSON.stringify({
+            success: true,
+            data: { id: newId, quotationNumber: newQuotationNumber },
+            message: `已拒絕原報價單並建立新草稿 ${newQuotationNumber}`
           }));
           return;
         }

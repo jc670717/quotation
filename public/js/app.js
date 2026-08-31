@@ -1450,6 +1450,7 @@ function renderQuotationsTable(quotations) {
           <button class="btn btn-outline-secondary" onclick="openViewQuotationModal(${q.id})" title="檢視正式報價單">👁️</button>
           ${q.status === 'ACCEPTED' && !q.hasTransaction ? `<button class="btn btn-outline-success" onclick="convertToTransaction(${q.id})" title="轉為交易單">💳 轉交易</button>` : ''}
           <button class="btn btn-outline-primary" onclick="openEditQuotationModal(${q.id})" title="編輯報價單">✏️</button>
+          ${!q.hasTransaction ? `<button class="btn btn-outline-warning" onclick="reviseQuotation(${q.id})" title="拒絕原報價單並複製為新草稿">🔁 更改</button>` : ''}
           <button class="btn btn-outline-danger" onclick="confirmDeleteQuotation(${q.id}, '${q.quotationNumber}')" title="刪除報價單">🗑️</button>
         </div>
       </td>
@@ -1472,6 +1473,32 @@ function handleQuotationSearch() {
     );
   });
   renderQuotationsTable(filtered);
+}
+
+async function reviseQuotation(quotationId) {
+  const quotation = appState.quotations.find(item => item.id === quotationId);
+  if (!quotation) {
+    showAlert('找不到要更改的報價單', 'danger');
+    return;
+  }
+
+  const confirmed = window.confirm(
+    `確定要更改報價單「${quotation.quotationNumber}」嗎？\n\n系統會將原報價單標示為「已拒絕」，並複製一張新的草稿供你修改。`
+  );
+  if (!confirmed) return;
+
+  const response = await fetchApi(`/api/quotations/${quotationId}/revise`, {
+    method: 'POST',
+    body: JSON.stringify({ operator: appState.currentUser.name })
+  });
+  if (!response.success || !response.data?.id) {
+    showAlert(response.message || '建立更改版報價單失敗', 'danger');
+    return;
+  }
+
+  showAlert(response.message || '已建立新的報價單草稿', 'success');
+  await loadQuotations();
+  await openEditQuotationModal(response.data.id);
 }
 
 // 報價單開立主體公司切換：公司資料控制抬頭與條款，聯絡窗口固定採目前登入者。
