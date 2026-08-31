@@ -1536,30 +1536,42 @@ function handleQuotationCustomerSelect(customerId) {
   if (!customerId) return;
   const c = appState.customers.find(item => item.id === parseInt(customerId, 10));
   if (!c) return;
-
-  document.getElementById('q_customer_id').value = c.id;
-  document.getElementById('q_customer_name').value = c.customerName;
-  document.getElementById('q_customer_tax_id').value = c.taxId || '';
-  document.getElementById('q_customer_contact').value = c.contactPerson || '';
-  document.getElementById('q_customer_phone').value = c.phone || '';
-  document.getElementById('q_customer_email').value = c.email || '';
-  document.getElementById('q_customer_address').value = c.address || '';
+  applyQuotationCustomerData(c);
 }
 
-// 統編輸入滿 8 碼時，帶入系統內已建立的相符客戶；未找到時保留手動輸入內容。
-function handleQuotationCustomerTaxIdInput(inputEl) {
+function applyQuotationCustomerData(customer) {
+  document.getElementById('q_customer_id').value = customer.id;
+  document.getElementById('q_customer_name').value = customer.customerName;
+  document.getElementById('q_customer_tax_id').value = customer.taxId || '';
+  document.getElementById('q_customer_contact').value = customer.contactPerson || '';
+  document.getElementById('q_customer_phone').value = customer.phone || '';
+  document.getElementById('q_customer_email').value = customer.email || '';
+  document.getElementById('q_customer_address').value = customer.address || '';
+}
+
+// 統編輸入滿 8 碼時，直接向 API 查詢，避免初始客戶清單未同步導致無法帶入。
+async function handleQuotationCustomerTaxIdInput(inputEl) {
   const normalizedTaxId = inputEl.value.replace(/\D/g, '').slice(0, 8);
   if (inputEl.value !== normalizedTaxId) inputEl.value = normalizedTaxId;
   if (normalizedTaxId.length !== 8) return;
 
-  const matchedCustomer = appState.customers.find(customer =>
+  let matchedCustomer = appState.customers.find(customer =>
     String(customer.taxId || '').replace(/\D/g, '') === normalizedTaxId
   );
+  if (!matchedCustomer) {
+    const response = await fetchApi(`/api/customers?search=${encodeURIComponent(normalizedTaxId)}&limit=100`);
+    if (inputEl.value !== normalizedTaxId) return;
+    if (response.success && Array.isArray(response.data)) {
+      matchedCustomer = response.data.find(customer =>
+        String(customer.taxId || '').replace(/\D/g, '') === normalizedTaxId
+      );
+    }
+  }
   if (!matchedCustomer) return;
 
   const customerSelect = document.getElementById('q_customer_select');
   if (customerSelect) customerSelect.value = String(matchedCustomer.id);
-  handleQuotationCustomerSelect(matchedCustomer.id);
+  applyQuotationCustomerData(matchedCustomer);
 }
 
 // 動態增加報價單明細列
