@@ -664,6 +664,7 @@ async function loadDashboard() {
 
   // 渲染最近報價單
   if (quotationsRes.success && Array.isArray(quotationsRes.data)) {
+    appState.quotations = quotationsRes.data;
     renderDashboardRecentQuotations(quotationsRes.data);
   } else {
     renderDashboardRequestFailure('dashboardRecentQuotationsTbody', 6, quotationsRes.message);
@@ -671,6 +672,7 @@ async function loadDashboard() {
 
   // 渲染最近交易單
   if (transactionsRes.success && Array.isArray(transactionsRes.data)) {
+    appState.transactions = transactionsRes.data;
     renderDashboardRecentTransactions(transactionsRes.data.slice(0, 5));
   } else {
     renderDashboardRequestFailure('dashboardRecentTransactionsTbody', 5, transactionsRes.message);
@@ -2241,9 +2243,21 @@ function openCreateTransactionModal() {
   modal.show();
 }
 
-function openEditTransactionModal(id) {
-  const t = appState.transactions.find(item => item.id === id);
-  if (!t) return;
+async function openEditTransactionModal(id) {
+  // 首頁只載入交易摘要；編輯前重新讀取單筆資料，確保發票明細與收款狀態完整且最新。
+  const detailResponse = await fetchApi(`/api/transactions/${id}`);
+  if (!detailResponse.success || !detailResponse.data) {
+    showAlert(detailResponse.message || '讀取交易與發票明細失敗', 'danger');
+    return;
+  }
+  const t = detailResponse.data;
+
+  const stateIndex = appState.transactions.findIndex(item => item.id === id);
+  if (stateIndex >= 0) {
+    appState.transactions[stateIndex] = t;
+  } else {
+    appState.transactions.push(t);
+  }
 
   document.getElementById('tx_id').value = t.id;
   document.getElementById('tx_quotation_id').value = t.quotationId || '';
