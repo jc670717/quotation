@@ -96,13 +96,26 @@ function showAlert(message, type = 'success', duration = 3500) {
 
 // 通用 Fetch API 請求包裝
 async function fetchApi(endpoint, options = {}) {
+  const { timeoutMs = 15000, signal: suppliedSignal, ...fetchOptions } = options;
+  const abortController = new AbortController();
+  let didTimeout = false;
+  const timeoutId = setTimeout(() => {
+    didTimeout = true;
+    abortController.abort();
+  }, timeoutMs);
+
+  if (suppliedSignal) {
+    suppliedSignal.addEventListener('abort', () => abortController.abort(), { once: true });
+  }
+
   try {
     const defaultHeaders = { 'Content-Type': 'application/json' };
     const accessToken = localStorage.getItem('qms_access_token') || sessionStorage.getItem('qms_access_token');
     if (accessToken) defaultHeaders.Authorization = `Bearer ${accessToken}`;
     const config = {
-      ...options,
-      headers: { ...defaultHeaders, ...(options.headers || {}) }
+      ...fetchOptions,
+      signal: abortController.signal,
+      headers: { ...defaultHeaders, ...(fetchOptions.headers || {}) }
     };
     const res = await fetch(endpoint, config);
     let result = {};
@@ -133,7 +146,12 @@ async function fetchApi(endpoint, options = {}) {
     return result;
   } catch (err) {
     console.error(`Fetch API Error [${endpoint}]:`, err);
-    return { success: false, data: null, message: '網路連線或 API 請求發生錯誤: ' + err.message, error: err.message };
+    const message = didTimeout
+      ? `伺服器回應逾時（${Math.round(timeoutMs / 1000)} 秒），請稍後重試`
+      : '網路連線或 API 請求發生錯誤: ' + err.message;
+    return { success: false, data: null, message, error: err.message };
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
@@ -577,10 +595,12 @@ function switchCurrentUser(userId) {
 // ============================================================
 
 async function loadDashboard() {
-  // 同步取得指標資料
-  const metricsRes = await fetchApi('/api/metrics');
-  const quotationsRes = await fetchApi('/api/quotations?limit=5');
-  const transactionsRes = await fetchApi('/api/transactions');
+  // 三個獨立請求平行讀取；其中一個失敗不可阻塞其他區塊。
+  const [metricsRes, quotationsRes, transactionsRes] = await Promise.all([
+    fetchApi('/api/metrics'),
+    fetchApi('/api/quotations?limit=5'),
+    fetchApi('/api/transactions?limit=5')
+  ]);
 
   if (metricsRes.success && metricsRes.data) {
     const d = metricsRes.data;
@@ -616,12 +636,46 @@ async function loadDashboard() {
   // 渲染最近報價單
   if (quotationsRes.success && Array.isArray(quotationsRes.data)) {
     renderDashboardRecentQuotations(quotationsRes.data);
+  } else {
+    renderDashboardRequestFailure('dashboardRecentQuotationsTbody', 6, quotationsRes.message);
   }
 
   // 渲染最近交易單
   if (transactionsRes.success && Array.isArray(transactionsRes.data)) {
     renderDashboardRecentTransactions(transactionsRes.data.slice(0, 5));
+  } else {
+    renderDashboardRequestFailure('dashboardRecentTransactionsTbody', 5, transactionsRes.message);
   }
+
+  if (!metricsRes.success || !quotationsRes.success || !transactionsRes.success) {
+    const failedSections = [
+      !metricsRes.success && '統計指標',
+      !quotationsRes.success && '最近報價單',
+      !transactionsRes.success && '最近交易單'
+    ].filter(Boolean).join('、');
+    showAlert(`${failedSections}暫時無法讀取，請按「重新整理」重試。`, 'warning', 7000);
+  }
+}
+
+function renderDashboardRequestFailure(tableBodyId, colspan, message) {
+  const tbody = document.getElementById(tableBodyId);
+  if (!tbody) return;
+  tbody.innerHTML = '';
+
+  const row = document.createElement('tr');
+  const cell = document.createElement('td');
+  cell.colSpan = colspan;
+  cell.className = 'text-center py-4 text-muted';
+  cell.append('讀取失敗：' + (message || '暫時無法連線'));
+
+  const retryButton = document.createElement('button');
+  retryButton.type = 'button';
+  retryButton.className = 'btn btn-sm btn-outline-primary ms-3';
+  retryButton.textContent = '重新載入';
+  retryButton.addEventListener('click', loadDashboard);
+  cell.appendChild(retryButton);
+  row.appendChild(cell);
+  tbody.appendChild(row);
 }
 
 // 渲染狀態分佈 (0 筆不顯示)
