@@ -675,7 +675,7 @@ async function loadDashboard() {
     appState.transactions = transactionsRes.data;
     renderDashboardRecentTransactions(transactionsRes.data.slice(0, 5));
   } else {
-    renderDashboardRequestFailure('dashboardRecentTransactionsTbody', 5, transactionsRes.message);
+    renderDashboardRequestFailure('dashboardRecentTransactionsTbody', 4, transactionsRes.message);
   }
 
   if (!metricsRes.success || !quotationsRes.success || !transactionsRes.success) {
@@ -769,6 +769,7 @@ function renderDashboardRecentQuotations(quotations) {
 
     const profit = q.grossProfit !== undefined ? q.grossProfit : ((q.totalAmount || 0) - (q.totalCost || 0));
     const margin = q.grossMargin !== undefined ? q.grossMargin : (q.totalAmount > 0 ? ((profit / q.totalAmount) * 100).toFixed(1) : 0);
+    const canManage = canManageQuotation(q);
 
     tr.innerHTML = `
       <td><span class="quotation-code">${q.quotationNumber}</span></td>
@@ -779,7 +780,7 @@ function renderDashboardRecentQuotations(quotations) {
       <td class="text-end">
         <div class="btn-group btn-group-sm action-icon-group">
           <button class="btn action-icon-btn" onclick="openViewQuotationModal(${q.id})" title="檢視報價單" aria-label="檢視報價單">👁️</button>
-          ${q.status === 'ACCEPTED' && !q.hasTransaction ? `<button class="btn action-icon-btn" onclick="convertToTransaction(${q.id})" title="轉為交易單" aria-label="轉為交易單">💳</button>` : ''}
+          ${canManage && q.status === 'ACCEPTED' && !q.hasTransaction ? `<button class="btn action-icon-btn" onclick="convertToTransaction(${q.id})" title="轉為交易單" aria-label="轉為交易單">💳</button>` : ''}
         </div>
       </td>
     `;
@@ -794,7 +795,7 @@ function renderDashboardRecentTransactions(transactions) {
   tbody.innerHTML = '';
 
   if (transactions.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-muted">尚無交易立案紀錄</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-muted">尚無交易立案紀錄</td></tr>';
     return;
   }
 
@@ -815,9 +816,6 @@ function renderDashboardRecentTransactions(transactions) {
         <div class="small text-muted">總: ${formatCurrency(t.totalAmount)}</div>
       </td>
       <td>${paymentBadges[t.paymentStatus] || t.paymentStatus}</td>
-      <td class="text-end">
-        <button class="btn btn-sm action-icon-btn" onclick="openEditTransactionModal(${t.id})" title="管理發票與收款" aria-label="管理發票與收款">✏️</button>
-      </td>
     `;
     tbody.appendChild(tr);
   });
@@ -1420,6 +1418,16 @@ async function loadQuotations() {
   }
 }
 
+function canManageQuotation(quotation) {
+  if (appState.currentUser?.role === 'ADMIN') return true;
+  const quotationOwner = quotation?.salesRep || quotation?.createdBy;
+  return Boolean(
+    quotationOwner &&
+    appState.currentUser?.name &&
+    quotationOwner.trim() === appState.currentUser.name.trim()
+  );
+}
+
 function renderQuotationsTable(quotations) {
   const tbody = document.getElementById('quotationsTableBody');
   if (!tbody) return;
@@ -1442,6 +1450,7 @@ function renderQuotationsTable(quotations) {
 
     const profit = q.grossProfit !== undefined ? q.grossProfit : ((q.totalAmount || 0) - (q.totalCost || 0));
     const margin = q.grossMargin !== undefined ? q.grossMargin : (q.totalAmount > 0 ? ((profit / q.totalAmount) * 100).toFixed(1) : 0);
+    const canManage = canManageQuotation(q);
 
     tr.innerHTML = `
       <td><span class="quotation-code">${q.quotationNumber}</span></td>
@@ -1465,10 +1474,10 @@ function renderQuotationsTable(quotations) {
       <td class="text-end">
         <div class="btn-group btn-group-sm action-icon-group">
           <button class="btn action-icon-btn" onclick="openViewQuotationModal(${q.id})" title="檢視正式報價單" aria-label="檢視正式報價單">👁️</button>
-          ${q.status === 'ACCEPTED' && !q.hasTransaction ? `<button class="btn action-icon-btn" onclick="convertToTransaction(${q.id})" title="轉為交易單" aria-label="轉為交易單">💳</button>` : ''}
-          <button class="btn action-icon-btn" onclick="openEditQuotationModal(${q.id})" title="編輯報價單" aria-label="編輯報價單">✏️</button>
-          ${!q.hasTransaction ? `<button class="btn action-icon-btn" onclick="reviseQuotation(${q.id})" title="拒絕原報價單並複製為新草稿" aria-label="更改報價單">🔁</button>` : ''}
-          <button class="btn action-icon-btn" onclick="confirmDeleteQuotation(${q.id}, '${q.quotationNumber}')" title="刪除報價單" aria-label="刪除報價單">🗑️</button>
+          ${canManage && q.status === 'ACCEPTED' && !q.hasTransaction ? `<button class="btn action-icon-btn" onclick="convertToTransaction(${q.id})" title="轉為交易單" aria-label="轉為交易單">💳</button>` : ''}
+          ${canManage ? `<button class="btn action-icon-btn" onclick="openEditQuotationModal(${q.id})" title="編輯報價單" aria-label="編輯報價單">✏️</button>` : ''}
+          ${canManage && !q.hasTransaction ? `<button class="btn action-icon-btn" onclick="reviseQuotation(${q.id})" title="拒絕原報價單並複製為新草稿" aria-label="更改報價單">🔁</button>` : ''}
+          ${canManage ? `<button class="btn action-icon-btn" onclick="confirmDeleteQuotation(${q.id}, '${q.quotationNumber}')" title="刪除報價單" aria-label="刪除報價單">🗑️</button>` : ''}
         </div>
       </td>
     `;
@@ -1496,6 +1505,10 @@ async function reviseQuotation(quotationId) {
   const quotation = appState.quotations.find(item => item.id === quotationId);
   if (!quotation) {
     showAlert('找不到要更改的報價單', 'danger');
+    return;
+  }
+  if (!canManageQuotation(quotation)) {
+    showAlert('只有原報價聯絡窗口或系統管理者可以更改報價單', 'warning');
     return;
   }
 
@@ -1809,6 +1822,10 @@ async function fetchQuotationDetails(id) {
 async function openEditQuotationModal(id) {
   const q = await fetchQuotationDetails(id);
   if (!q) return;
+  if (!canManageQuotation(q)) {
+    showAlert('只有原報價聯絡窗口或系統管理者可以編輯報價單', 'warning');
+    return;
+  }
 
   document.getElementById('q_id').value = q.id;
   document.getElementById('q_number').value = q.quotationNumber;
@@ -1831,6 +1848,10 @@ async function openEditQuotationModal(id) {
 
   populateQuotationCompanySelect(q.companyId);
   populateQuotationCustomerSelect(q.customerId);
+  // 系統管理者協助修改時，仍保留原本帶入的報價聯絡窗口，不移轉該筆報價的維護權。
+  document.getElementById('q_company_contact_person').value = q.salesRep || '';
+  document.getElementById('q_company_contact_phone').value = q.salesPhone || '';
+  document.getElementById('q_company_contact_email').value = q.salesEmail || '';
 
   const container = document.getElementById('quotationItemsContainer');
   if (container) container.innerHTML = '';
@@ -1933,6 +1954,10 @@ async function convertToTransaction(quotationId) {
     showAlert('只有已核准的報價單可以轉為交易單', 'warning');
     return;
   }
+  if (q && !canManageQuotation(q)) {
+    showAlert('只有原報價聯絡窗口或系統管理者可以轉為交易單', 'warning');
+    return;
+  }
 
   const isConfirmed = window.confirm(
     `確定要將已核准報價單「${qNum}」轉為正式交易嗎？\n\n轉換後會建立正式交易單。`
@@ -1974,7 +1999,7 @@ async function openViewQuotationModal(id) {
   const modalEl = document.getElementById('viewQuotationModal');
   modalEl.setAttribute('data-active-quotation-id', q.id);
   const convertButton = document.getElementById('viewQConvertTxBtn');
-  if (convertButton) convertButton.classList.toggle('d-none', q.status !== 'ACCEPTED' || q.hasTransaction);
+  if (convertButton) convertButton.classList.toggle('d-none', q.status !== 'ACCEPTED' || q.hasTransaction || !canManageQuotation(q));
 
   // 尋找所屬公司資料 (含 LOGO)
   const comp = appState.allCompanies.find(c => c.id === q.companyId) || appState.allCompanies[0] || {};
@@ -2097,6 +2122,11 @@ async function openViewQuotationModal(id) {
 }
 
 function confirmDeleteQuotation(id, number) {
+  const quotation = appState.quotations.find(item => item.id === id);
+  if (!quotation || !canManageQuotation(quotation)) {
+    showAlert('只有原報價聯絡窗口或系統管理者可以刪除報價單', 'warning');
+    return;
+  }
   openDeleteConfirmModal(`確定要刪除報價單「${number}」嗎？`, async () => {
     const res = await fetchApi(`/api/quotations/${id}?operator=${encodeURIComponent(appState.currentUser.name)}`, { method: 'DELETE' });
     if (res.success) {

@@ -277,6 +277,15 @@ def createApiResponse(
     return JSONResponse(status_code=statusCode, content=jsonable_encoder(content))
 
 
+def canManageQuotation(request: Request, salesRep: Optional[str]) -> bool:
+    """報價資料異動僅限原帶入的聯絡窗口或系統管理者。"""
+    claims = getattr(request.state, "user", {})
+    if claims.get("role") == "ADMIN":
+        return True
+    operatorName = (claims.get("name") or "").strip()
+    return bool(operatorName and salesRep and operatorName == salesRep.strip())
+
+
 @app.exception_handler(RequestValidationError)
 async def handleRequestValidationError(_: Request, exc: RequestValidationError):
     """將 FastAPI 預設 detail 格式轉為系統統一錯誤信封。"""
@@ -1649,10 +1658,11 @@ def getQuotations(
 
 
 @app.post("/api/quotations/{quotationId}/revise")
-def reviseQuotation(quotationId: int, payload: QuotationRevisionInput):
+def reviseQuotation(quotationId: int, payload: QuotationRevisionInput, request: Request):
     """拒絕舊報價後，於同一交易內複製一張新的草稿，避免只完成其中一步。"""
     autoEnsureSchema()
-    operator = payload.operator or "系統使用者"
+    claims = getattr(request.state, "user", {})
+    operator = claims.get("name") or "系統使用者"
     try:
         with getDbConnection() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -1660,6 +1670,8 @@ def reviseQuotation(quotationId: int, payload: QuotationRevisionInput):
                 original = cur.fetchone()
                 if not original:
                     return createApiResponse(isSuccess=False, message="找不到該報價單", statusCode=404)
+                if not canManageQuotation(request, original["sales_rep"] or original["created_by"]):
+                    return createApiResponse(isSuccess=False, message="只有原報價聯絡窗口或系統管理者可以更改報價單", statusCode=403)
 
                 cur.execute("SELECT 1 FROM transactions WHERE quotation_id = %s LIMIT 1;", (quotationId,))
                 if cur.fetchone():
@@ -1774,8 +1786,10 @@ def getQuotationById(quotationId: int):
 
 
 @app.post("/api/quotations")
-def createQuotation(payload: QuotationInput):
+def createQuotation(payload: QuotationInput, request: Request):
     autoEnsureSchema()
+    claims = getattr(request.state, "user", {})
+    operator = claims.get("name") or "系統使用者"
     try:
         calculatedSubtotal = Decimal("0.00")
         totalCost = Decimal("0.00")
@@ -1832,7 +1846,7 @@ def createQuotation(payload: QuotationInput):
                     payload.customerAddress,
                     payload.shippingAddress,
                     payload.paymentTerms,
-                    payload.salesRep,
+                    operator,
                     payload.salesPhone,
                     payload.salesEmail,
                     payload.issueDate,
@@ -1848,8 +1862,8 @@ def createQuotation(payload: QuotationInput):
                     float(totalCost),
                     float(estimatedProfit),
                     payload.notes,
-                    payload.createdBy or "系統使用者",
-                    payload.updatedBy or "系統使用者"
+                    operator,
+                    operator
                 ))
                 newId = cur.fetchone()["id"]
 
@@ -1874,8 +1888,10 @@ def createQuotation(payload: QuotationInput):
 
 
 @app.put("/api/quotations/{quotationId}")
-def updateQuotation(quotationId: int, payload: QuotationInput):
+def updateQuotation(quotationId: int, payload: QuotationInput, request: Request):
     autoEnsureSchema()
+    claims = getattr(request.state, "user", {})
+    operator = claims.get("name") or "系統使用者"
     try:
         calculatedSubtotal = Decimal("0.00")
         totalCost = Decimal("0.00")
@@ -1910,6 +1926,12 @@ def updateQuotation(quotationId: int, payload: QuotationInput):
 
         with getDbConnection() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT sales_rep, sales_phone, sales_email, created_by FROM quotations WHERE id = %s FOR UPDATE;", (quotationId,))
+                original = cur.fetchone()
+                if not original:
+                    return createApiResponse(isSuccess=False, message="找不到該報價單", statusCode=404)
+                if not canManageQuotation(request, original["sales_rep"] or original["created_by"]):
+                    return createApiResponse(isSuccess=False, message="只有原報價聯絡窗口或系統管理者可以編輯報價單", statusCode=403)
                 cur.execute("""
                     UPDATE quotations SET
                         quotation_number = %s, company_id = %s, company_name = %s, customer_id = %s, customer_name = %s,
@@ -1923,11 +1945,11 @@ def updateQuotation(quotationId: int, payload: QuotationInput):
                 """, (
                     payload.quotationNumber.strip(), payload.companyId, payload.companyName, payload.customerId, payload.customerName.strip(),
                     payload.customerTaxId, payload.customerContactPerson, payload.customerEmail, payload.customerPhone,
-                    payload.customerAddress, payload.shippingAddress, payload.paymentTerms, payload.salesRep, payload.salesPhone, payload.salesEmail,
+                    payload.customerAddress, payload.shippingAddress, payload.paymentTerms, original["sales_rep"], original["sales_phone"], original["sales_email"],
                     payload.issueDate, payload.expiryDate or payload.validUntil, payload.validUntil or payload.expiryDate,
                     payload.status or "DRAFT", payload.taxMode or "EXCLUSIVE",
                     float(calculatedSubtotal), float(taxRate), float(taxAmount), float(discount), float(totalAmount),
-                    float(totalCost), float(estimatedProfit), payload.notes, payload.updatedBy or "系統使用者", quotationId
+                    float(totalCost), float(estimatedProfit), payload.notes, operator, quotationId
                 ))
                 if not cur.fetchone():
                     return createApiResponse(isSuccess=False, message="找不到該報價單", statusCode=404)
@@ -1954,11 +1976,17 @@ def updateQuotation(quotationId: int, payload: QuotationInput):
 
 
 @app.delete("/api/quotations/{quotationId}")
-def deleteQuotation(quotationId: int):
+def deleteQuotation(quotationId: int, request: Request):
     autoEnsureSchema()
     try:
         with getDbConnection() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT sales_rep, created_by FROM quotations WHERE id = %s FOR UPDATE;", (quotationId,))
+                original = cur.fetchone()
+                if not original:
+                    return createApiResponse(isSuccess=False, message="找不到該報價單", statusCode=404)
+                if not canManageQuotation(request, original["sales_rep"] or original["created_by"]):
+                    return createApiResponse(isSuccess=False, message="只有原報價聯絡窗口或系統管理者可以刪除報價單", statusCode=403)
                 cur.execute("DELETE FROM quotations WHERE id = %s RETURNING id, quotation_number;", (quotationId,))
                 deleted = cur.fetchone()
                 if not deleted:
@@ -2139,7 +2167,7 @@ def createTransaction(payload: TransactionInput):
 
 
 @app.post("/api/transactions/from-quotation/{quotationId}")
-def convertQuotationToTransaction(quotationId: int):
+def convertQuotationToTransaction(quotationId: int, request: Request):
     autoEnsureSchema()
     try:
         with getDbConnection() as conn:
@@ -2148,6 +2176,8 @@ def convertQuotationToTransaction(quotationId: int):
                 q = cur.fetchone()
                 if not q:
                     return createApiResponse(isSuccess=False, message="找不到指定的報價單", statusCode=404)
+                if not canManageQuotation(request, q.get("sales_rep") or q.get("created_by")):
+                    return createApiResponse(isSuccess=False, message="只有原報價聯絡窗口或系統管理者可以轉為交易單", statusCode=403)
 
                 if q["status"] != "ACCEPTED":
                     return createApiResponse(
@@ -2173,7 +2203,7 @@ def convertQuotationToTransaction(quotationId: int):
                 items = cur.fetchall()
                 totalCost = sum(float(it["quantity"]) * float(it["cost_price"]) for it in items)
 
-                operator = q.get("updated_by") or q.get("created_by") or "系統使用者"
+                operator = getattr(request.state, "user", {}).get("name") or "系統使用者"
 
                 txNumber = f"TX-{date.today().strftime('%Y%m%d')}-{uuid4().hex[:10].upper()}"
                 cur.execute("""
