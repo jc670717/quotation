@@ -624,7 +624,10 @@ body {
   }
 }
 
-/* 金額與幣值不換行防護 */
+/* 全域表格防換行與 RWD 行動體驗強化 */
+.table th,
+.table td,
+.quotation-table-header th,
 .text-nowrap,
 .quotation-code,
 .item-line-total,
@@ -635,6 +638,52 @@ body {
 .table td span.text-success,
 .table td span.text-danger {
   white-space: nowrap !important;
+}
+
+/* 確保 Email、日期時間、代碼等單元格不被折行 */
+.table td,
+.table td a,
+.table td div,
+.table td span {
+  word-break: keep-all;
+}
+
+/* 手機與平板響應式表格 (RWD 體驗強化) */
+.table-responsive {
+  overflow-x: auto !important;
+  -webkit-overflow-scrolling: touch;
+  position: relative;
+  scrollbar-width: thin;
+  border-radius: 0.5rem;
+}
+
+.table-responsive::-webkit-scrollbar {
+  height: 6px;
+}
+
+.table-responsive::-webkit-scrollbar-thumb {
+  background-color: #cbd5e1;
+  border-radius: 4px;
+}
+
+.table-responsive::-webkit-scrollbar-track {
+  background-color: #f8fafc;
+}
+
+/* 手機版專屬微調：避免字體過大與過大 padding 導致表格難以閱讀 */
+@media (max-width: 767.98px) {
+  .table > :not(caption) > * > * {
+    padding: 0.65rem 0.75rem !important;
+    font-size: 0.85rem !important;
+  }
+  .quotation-table-header th {
+    padding: 0.65rem 0.75rem !important;
+    font-size: 0.75rem !important;
+  }
+  .table-responsive {
+    border: 1px solid #e2e8f0;
+    margin-bottom: 0.5rem;
+  }
 }
 
 

@@ -36,7 +36,7 @@
 
           <form id="loginForm" onsubmit="handleLogin(event)">
             <div class="mb-3">
-              <label for="loginUsername" class="form-label fw-semibold text-dark small">使用者帳號 (Username)</label>
+              <label for="loginUsername" class="form-label fw-semibold text-dark small">使用者帳號</label>
               <div class="input-group">
                 <span class="input-group-text bg-light border-end-0">👤</span>
                 <input type="text" class="form-control border-start-0" id="loginUsername" required autofocus autocomplete="username" />
@@ -45,7 +45,7 @@
 
             <div class="mb-3">
               <div class="d-flex justify-content-between align-items-center mb-1">
-                <label for="loginPassword" class="form-label fw-semibold text-dark small mb-0">登入密碼 (Password)</label>
+                <label for="loginPassword" class="form-label fw-semibold text-dark small mb-0">登入密碼</label>
                 <button type="button" class="btn btn-link p-0 text-decoration-none text-muted small" onclick="togglePasswordVisibility('loginPassword', this)">
                   👁️ 顯示密碼
                 </button>
@@ -194,13 +194,13 @@
                 <span class="text-white fw-bold fs-5" style="line-height: 1;">+</span> 快速新增
               </button>
               <ul class="dropdown-menu dropdown-menu-end shadow-sm">
-                <li><a class="dropdown-item py-2" href="#" onclick="openCreateQuotationModal(); return false;">📑 新增報價單 (Quotation)</a></li>
-                <li><a class="dropdown-item py-2" href="#" onclick="openCreateCustomerModal(); return false;">👥 新增客戶 (Customer)</a></li>
-                <li><a class="dropdown-item py-2" href="#" onclick="openCreateVendorModal(); return false;">🏭 新增廠商 (Vendor)</a></li>
-                <li><a class="dropdown-item py-2" href="#" onclick="openCreateProductModal(); return false;">📦 新增產品/服務 (Product)</a></li>
-                <li><a class="dropdown-item py-2" href="#" onclick="openCreateTransactionModal(); return false;">💳 新增交易紀錄 (Transaction)</a></li>
+                <li><a class="dropdown-item py-2" href="#" onclick="openCreateQuotationModal(); return false;">📑 新增報價單</a></li>
+                <li><a class="dropdown-item py-2" href="#" onclick="openCreateCustomerModal(); return false;">👥 新增客戶</a></li>
+                <li><a class="dropdown-item py-2" href="#" onclick="openCreateVendorModal(); return false;">🏭 新增廠商</a></li>
+                <li><a class="dropdown-item py-2" href="#" onclick="openCreateProductModal(); return false;">📦 新增產品/服務</a></li>
+                <li><a class="dropdown-item py-2" href="#" onclick="openCreateTransactionModal(); return false;">💳 新增交易紀錄</a></li>
                 <li><hr class="dropdown-divider"></li>
-                <li><a class="dropdown-item py-2" href="#" onclick="openCreateUserModal(); return false;">👤 新增使用者與權限 (User)</a></li>
+                <li><a class="dropdown-item py-2" href="#" onclick="openCreateUserModal(); return false;">👤 新增使用者與權限</a></li>
               </ul>
             </div>
           </div>
@@ -217,6 +217,19 @@
                包含當年度 4 大 KPI 卡片 (營業收入、報價總額、已結案毛利、已結案毛利率) + 0 筆不顯示之狀態分佈
                ============================================================ -->
           <div id="view-dashboard" class="app-view">
+            <!-- 儀表板標題與說明 (比照其他頁面規格) -->
+            <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
+              <div>
+                <h4 class="fw-bold text-dark mb-1">儀表板總覽</h4>
+                <p class="text-muted small mb-0">綜覽企業營運績效、當年度營業收入與最新報價交易進度</p>
+              </div>
+              <div class="d-flex align-items-center gap-2">
+                <button type="button" class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-1" onclick="loadDashboard()">
+                  <span>🔄</span> 重新整理數據
+                </button>
+              </div>
+            </div>
+
             <!-- 當年度 4 大 KPI 指標卡片 -->
             <div class="row g-3 g-md-4 mb-4" id="kpiCardsRow">
               <!-- KPI 1: 當年度營業收入 -->
@@ -284,55 +297,57 @@
               </div>
             </div>
 
-            <!-- 最近報價單與最近交易單兩欄佈局 -->
-            <div class="row g-4">
-              <div class="col-12 col-lg-7">
-                <div class="quotation-card p-3 p-md-4 h-100">
-                  <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h6 class="fw-bold mb-0 text-dark">📑 最近開立報價單</h6>
-                    <button class="btn btn-sm btn-link p-0 text-decoration-none" onclick="switchView('quotations')">完整列表</button>
-                  </div>
-                  <div class="table-responsive">
-                    <table class="table table-hover align-middle mb-0">
-                      <thead class="quotation-table-header">
-                        <tr>
-                          <th>報價單號</th>
-                          <th>客戶名稱</th>
-                          <th>總金額</th>
-                          <th>預估毛利</th>
-                          <th>狀態</th>
-                          <th class="text-end">操作</th>
-                        </tr>
-                      </thead>
-                      <tbody id="dashboardRecentQuotationsTbody">
-                        <tr><td colspan="6" class="text-center py-4 text-muted">資料載入中...</td></tr>
-                      </tbody>
-                    </table>
-                  </div>
+            <!-- 最近報價單與最近交易單改為上下排列（版面寬敞不擁擠） -->
+            <div class="d-flex flex-column gap-4">
+              <!-- 上：最近開立報價單 -->
+              <div class="quotation-card p-3 p-md-4">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                  <h6 class="fw-bold mb-0 text-dark">📑 最近開立報價單</h6>
+                  <button class="btn btn-sm btn-link p-0 text-decoration-none" onclick="switchView('quotations')">查看完整報價清單 ➔</button>
+                </div>
+                <div class="table-responsive">
+                  <table class="table table-hover align-middle mb-0">
+                    <thead class="quotation-table-header">
+                      <tr>
+                        <th>報價單號</th>
+                        <th>客戶名稱</th>
+                        <th>開立日期</th>
+                        <th>報價總額</th>
+                        <th>預估毛利</th>
+                        <th>狀態</th>
+                        <th class="text-end">操作</th>
+                      </tr>
+                    </thead>
+                    <tbody id="dashboardRecentQuotationsTbody">
+                      <tr><td colspan="7" class="text-center py-4 text-muted">資料載入中...</td></tr>
+                    </tbody>
+                  </table>
                 </div>
               </div>
 
-              <div class="col-12 col-lg-5">
-                <div class="quotation-card p-3 p-md-4 h-100">
-                  <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h6 class="fw-bold mb-0 text-dark">💳 最近交易與發票進度</h6>
-                    <button class="btn btn-sm btn-link p-0 text-decoration-none" onclick="switchView('transactions')">完整列表</button>
-                  </div>
-                  <div class="table-responsive">
-                    <table class="table table-hover align-middle mb-0">
-                      <thead class="quotation-table-header">
-                        <tr>
-                          <th>交易單號</th>
-                          <th>客戶</th>
-                          <th>已收/總額</th>
-                          <th>付款</th>
-                        </tr>
-                      </thead>
-                      <tbody id="dashboardRecentTransactionsTbody">
-                        <tr><td colspan="4" class="text-center py-4 text-muted">資料載入中...</td></tr>
-                      </tbody>
-                    </table>
-                  </div>
+              <!-- 下：最近交易與發票進度 -->
+              <div class="quotation-card p-3 p-md-4">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                  <h6 class="fw-bold mb-0 text-dark">💳 最近交易與發票進度</h6>
+                  <button class="btn btn-sm btn-link p-0 text-decoration-none" onclick="switchView('transactions')">查看完整交易清單 ➔</button>
+                </div>
+                <div class="table-responsive">
+                  <table class="table table-hover align-middle mb-0">
+                    <thead class="quotation-table-header">
+                      <tr>
+                        <th>交易單號</th>
+                        <th>客戶名稱</th>
+                        <th>立案日期</th>
+                        <th>已收金額</th>
+                        <th>交易總額</th>
+                        <th>付款狀態</th>
+                        <th class="text-end">操作</th>
+                      </tr>
+                    </thead>
+                    <tbody id="dashboardRecentTransactionsTbody">
+                      <tr><td colspan="7" class="text-center py-4 text-muted">資料載入中...</td></tr>
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </div>
@@ -821,7 +836,7 @@
           <div id="view-audit_logs" class="app-view" style="display: none;">
             <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
               <div>
-                <h4 class="fw-bold text-dark mb-1">修改歷程記錄 (Audit Logs)</h4>
+                <h4 class="fw-bold text-dark mb-1">修改歷程記錄</h4>
                 <p class="text-muted small mb-0">全系統各項業務新增、修改、刪除、轉交易與發票開立之完整日誌追蹤</p>
               </div>
               <button type="button" class="btn btn-outline-secondary btn-sm" onclick="loadAuditLogs()">
@@ -1332,16 +1347,16 @@
                 </div>
 
                 <div class="col-12 col-md-6">
-                  <label class="form-label fw-semibold">品牌 (Brand)</label>
+                  <label class="form-label fw-semibold">品牌</label>
                   <input type="text" id="p_brand" class="form-control" placeholder="例如：Microsoft / ASUS / 自研" />
                 </div>
                 <div class="col-12 col-md-6">
-                  <label class="form-label fw-semibold">型號 (Model)</label>
+                  <label class="form-label fw-semibold">型號</label>
                   <input type="text" id="p_model" class="form-control font-monospace" placeholder="例如：AZ-ARCH-ENT-2026" />
                 </div>
 
                 <div class="col-12 col-md-8">
-                  <label class="form-label fw-semibold">供應廠商 (Vendor)</label>
+                  <label class="form-label fw-semibold">供應廠商</label>
                   <div class="input-group">
                     <select id="p_vendor_select" class="form-select" onchange="handleProductVendorSelect(this.value)">
                       <option value="">-- 請選擇廠商清單 (或手動輸入) --</option>
@@ -1382,8 +1397,8 @@
                 <div class="col-12 col-md-6">
                   <label class="form-label fw-semibold">狀態</label>
                   <select id="p_status" class="form-select">
-                    <option value="ACTIVE">上架銷售中 (ACTIVE)</option>
-                    <option value="INACTIVE">已下架停售 (INACTIVE)</option>
+                    <option value="ACTIVE">上架銷售中</option>
+                    <option value="INACTIVE">已下架停售</option>
                   </select>
                 </div>
 
@@ -1514,7 +1529,7 @@
                   <input type="text" id="u_name" class="form-control" required placeholder="例如：陳大明" />
                 </div>
                 <div class="col-12 col-md-6">
-                  <label class="form-label fw-semibold">使用者職稱 (Job Title)</label>
+                  <label class="form-label fw-semibold">使用者職稱</label>
                   <input type="text" id="u_title" class="form-control" placeholder="例如：業務主管 / 專案經理 / 會計專員" />
                 </div>
                 <div class="col-12 col-md-6">
@@ -1543,15 +1558,15 @@
                 <div class="col-12 col-md-6">
                   <label class="form-label fw-semibold">系統角色層級</label>
                   <select id="u_role" class="form-select" onchange="handleUserRoleChange(this.value)">
-                    <option value="USER">一般使用者 (USER - 依下方勾選權限限制)</option>
-                    <option value="ADMIN">系統管理者 (ADMIN - 完整最高權限)</option>
+                    <option value="USER">一般使用者</option>
+                    <option value="ADMIN">系統管理者</option>
                   </select>
                 </div>
                 <div class="col-12">
                   <label class="form-label fw-semibold">帳號狀態</label>
                   <select id="u_status" class="form-select">
-                    <option value="ACTIVE">正常啟用中 (ACTIVE)</option>
-                    <option value="INACTIVE">停用中 (INACTIVE)</option>
+                    <option value="ACTIVE">正常啟用中</option>
+                    <option value="INACTIVE">停用中</option>
                   </select>
                 </div>
               </div>
@@ -1644,7 +1659,7 @@
               </div>
               <div class="mb-3">
                 <label for="cp_old_password" class="form-label fw-semibold text-dark small">原密碼</label>
-                <input type="password" id="cp_old_password" class="form-control" placeholder="請輸入原密碼" required autocomplete="current-password" />
+                <input type="password" id="cp_old_password" class="form-control" placeholder="請輸入原密碼 (如無原密碼可留空)" autocomplete="current-password" />
               </div>
               <div class="mb-3">
                 <label for="cp_new_password" class="form-label fw-semibold text-dark small">新密碼 <span class="text-danger">*</span></label>

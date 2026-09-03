@@ -77,7 +77,7 @@ app.add_middleware(
 DB_POOL: Optional[pool.SimpleConnectionPool] = None
 IS_INITIALIZED = False
 
-PUBLIC_API_PATHS = {"/api/health", "/api/auth/login", "/api/init-db", "/api/docs", "/api/openapi.json"}
+PUBLIC_API_PATHS = {"/api/health", "/api/auth/login", "/api/auth/change-password", "/api/init-db", "/api/docs", "/api/openapi.json"}
 API_MENU_PATHS = {
     "/api/customers": "customers", "/api/vendors": "vendors", "/api/products": "products",
     "/api/quotations": "quotations", "/api/transactions": "transactions", "/api/companies": "company",
@@ -740,6 +740,9 @@ def executeInitDb() -> bool:
 
     -- 欄位安全升級
     ALTER TABLE customers ADD COLUMN IF NOT EXISTS tax_id VARCHAR(50);
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS department VARCHAR(100);
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS title VARCHAR(100);
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS fax VARCHAR(50);
     ALTER TABLE customers ADD COLUMN IF NOT EXISTS shipping_address VARCHAR(500);
     ALTER TABLE customers ADD COLUMN IF NOT EXISTS payment_terms VARCHAR(100);
     ALTER TABLE customers ADD COLUMN IF NOT EXISTS industry VARCHAR(100);
@@ -783,6 +786,7 @@ def executeInitDb() -> bool:
     ALTER TABLE transactions ADD COLUMN IF NOT EXISTS paid_amount NUMERIC(12, 2) DEFAULT 0.00;
     ALTER TABLE transactions ADD COLUMN IF NOT EXISTS created_by VARCHAR(100);
     ALTER TABLE transactions ADD COLUMN IF NOT EXISTS updated_by VARCHAR(100);
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS title VARCHAR(100);
 
     -- 預設公司種子資料
     INSERT INTO companies (id, company_name, tax_id, phone, fax, address, email, website, bank_name, bank_account, bank_account_name, contact_person, contact_phone, contact_email, is_default, default_terms)
@@ -888,7 +892,7 @@ def loginUser(payload: LoginInput):
         with getDbConnection() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute("""
-                    SELECT id, name, username, password, department, phone, email, role, allowed_menus, status
+                    SELECT id, name, title, username, password, department, phone, email, role, allowed_menus, status
                     FROM users
                     WHERE username = %s;
                 """, (payload.username.strip(),))
@@ -918,6 +922,7 @@ def loginUser(payload: LoginInput):
         userResp = {
             "id": user["id"],
             "name": user["name"],
+            "title": user.get("title") or "",
             "username": user["username"],
             "department": user["department"],
             "phone": user["phone"],
@@ -945,6 +950,38 @@ def loginUser(payload: LoginInput):
 @app.post("/api/auth/logout")
 def logoutUser():
     return createApiResponse(isSuccess=True, message="已成功安全登出")
+
+
+@app.post("/api/auth/change-password")
+def changePassword(payload: ChangePasswordInput):
+    autoEnsureSchema()
+    try:
+        if not payload.newPassword or len(payload.newPassword.strip()) < 4:
+            return createApiResponse(isSuccess=False, message="新密碼長度至少需為 4 個字元", statusCode=400)
+
+        with getDbConnection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT id, name, username, password FROM users WHERE username = %s LIMIT 1;", (payload.username.strip(),))
+                user = cur.fetchone()
+                if not user:
+                    return createApiResponse(isSuccess=False, message="找不到該使用者帳號", statusCode=404)
+
+                # 原密碼比對驗證
+                if payload.oldPassword and payload.oldPassword.strip():
+                    if user.get("password") and not secrets.compare_digest(user["password"], payload.oldPassword.strip()):
+                        return createApiResponse(isSuccess=False, message="原密碼輸入不正確，請重新確認", statusCode=400)
+
+                # 更新密碼
+                cur.execute("""
+                    UPDATE users
+                    SET password = %s, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = %s;
+                """, (payload.newPassword.strip(), user["id"]))
+            conn.commit()
+
+        return createApiResponse(isSuccess=True, message="密碼已成功變更，請妥善保管您的新密碼！")
+    except Exception as err:
+        return createApiResponse(isSuccess=False, message="密碼變更失敗", errorMessage=str(err), statusCode=500)
 
 
 # -----------------------------------------------------------------------------
@@ -975,7 +1012,9 @@ def getCustomers(
                 offset = (page - 1) * limit
                 querySql = f"""
                     SELECT id, customer_code as "customerCode", customer_name as "customerName",
-                           tax_id as "taxId", contact_person as "contactPerson", email, phone, address,
+                           tax_id as "taxId", contact_person as "contactPerson",
+                           department, title, fax,
+                           email, phone, address,
                            shipping_address as "shippingAddress", payment_terms as "paymentTerms",
                            industry, notes, created_by as "createdBy", updated_by as "updatedBy",
                            created_at::text as "createdAt", updated_at::text as "updatedAt"
@@ -1013,7 +1052,9 @@ def getCustomerById(customerId: int):
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute("""
                     SELECT id, customer_code as "customerCode", customer_name as "customerName",
-                           tax_id as "taxId", contact_person as "contactPerson", email, phone, address,
+                           tax_id as "taxId", contact_person as "contactPerson",
+                           department, title, fax,
+                           email, phone, address,
                            shipping_address as "shippingAddress", payment_terms as "paymentTerms",
                            industry, notes, created_by as "createdBy", updated_by as "updatedBy",
                            created_at::text as "createdAt", updated_at::text as "updatedAt"
@@ -1051,17 +1092,24 @@ def createCustomer(payload: CustomerInput):
 
                 cur.execute("""
                     INSERT INTO customers (
-                        customer_code, customer_name, tax_id, contact_person, email, phone, address,
+                        customer_code, customer_name, tax_id, contact_person,
+                        department, title, fax,
+                        email, phone, address,
                         shipping_address, payment_terms, industry, notes, created_by, updated_by
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id, customer_code as "customerCode", customer_name as "customerName",
-                              tax_id as "taxId", contact_person as "contactPerson", email, phone, address,
+                              tax_id as "taxId", contact_person as "contactPerson",
+                              department, title, fax,
+                              email, phone, address,
                               shipping_address as "shippingAddress", payment_terms as "paymentTerms",
                               industry, notes, created_at as "createdAt";
                 """, (
                     code, payload.customerName.strip(),
                     taxId,
                     payload.contactPerson.strip() if payload.contactPerson and payload.contactPerson.strip() else None,
+                    payload.department.strip() if payload.department and payload.department.strip() else None,
+                    payload.title.strip() if payload.title and payload.title.strip() else None,
+                    payload.fax.strip() if payload.fax and payload.fax.strip() else None,
                     payload.email.strip() if payload.email and payload.email.strip() else None,
                     payload.phone.strip() if payload.phone and payload.phone.strip() else None,
                     payload.address.strip() if payload.address and payload.address.strip() else None,
@@ -1098,6 +1146,9 @@ def updateCustomer(customerId: int, payload: CustomerInput):
                     SET customer_name = %s,
                         tax_id = %s,
                         contact_person = %s,
+                        department = %s,
+                        title = %s,
+                        fax = %s,
                         email = %s,
                         phone = %s,
                         address = %s,
@@ -1109,13 +1160,18 @@ def updateCustomer(customerId: int, payload: CustomerInput):
                         updated_at = CURRENT_TIMESTAMP
                     WHERE id = %s
                     RETURNING id, customer_code as "customerCode", customer_name as "customerName",
-                              tax_id as "taxId", contact_person as "contactPerson", email, phone, address,
+                              tax_id as "taxId", contact_person as "contactPerson",
+                              department, title, fax,
+                              email, phone, address,
                               shipping_address as "shippingAddress", payment_terms as "paymentTerms",
                               industry, notes, updated_at as "updatedAt";
                 """, (
                     payload.customerName.strip(),
                     taxId,
                     payload.contactPerson.strip() if payload.contactPerson else None,
+                    payload.department.strip() if payload.department else None,
+                    payload.title.strip() if payload.title else None,
+                    payload.fax.strip() if payload.fax else None,
                     payload.email.strip() if payload.email else None,
                     payload.phone.strip() if payload.phone else None,
                     payload.address.strip() if payload.address else None,
@@ -2518,7 +2574,7 @@ def listUsers():
     try:
         with getDbConnection() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("SELECT id, name, username, department, phone, email, role, allowed_menus, status, created_at, updated_at FROM users ORDER BY id ASC;")
+                cur.execute("SELECT id, name, title, username, department, phone, email, role, allowed_menus, status, created_at, updated_at FROM users ORDER BY id ASC;")
                 rows = cur.fetchall()
 
         usersList = []
@@ -2526,6 +2582,7 @@ def listUsers():
             usersList.append({
                 "id": r["id"],
                 "name": r["name"],
+                "title": r.get("title") or "",
                 "username": r["username"],
                 "department": r["department"],
                 "phone": r["phone"],
@@ -2553,11 +2610,11 @@ def createUser(payload: UserInput):
                     return createApiResponse(isSuccess=False, message="該帳號已被使用，請更換帳號", statusCode=400)
 
                 cur.execute("""
-                    INSERT INTO users (name, username, password, department, phone, email, role, allowed_menus, status, created_by, updated_by)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    RETURNING id, name, username, role;
+                    INSERT INTO users (name, title, username, password, department, phone, email, role, allowed_menus, status, created_by, updated_by)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id, name, title, username, role;
                 """, (
-                    payload.name, payload.username, payload.password or "admin888",
+                    payload.name, payload.title or "", payload.username, payload.password or "admin888",
                     payload.department, payload.phone, payload.email,
                     payload.role, payload.allowedMenus, payload.status or "ACTIVE",
                     payload.createdBy or "系統使用者", payload.updatedBy or "系統使用者"
@@ -2579,26 +2636,26 @@ def updateUser(userId: int, payload: UserInput):
                 if payload.password and payload.password.strip():
                     cur.execute("""
                         UPDATE users
-                        SET name = %s, department = %s, phone = %s, email = %s,
+                        SET name = %s, title = %s, department = %s, phone = %s, email = %s,
                             role = %s, allowed_menus = %s, status = %s, password = %s,
                             updated_by = %s, updated_at = CURRENT_TIMESTAMP
                         WHERE id = %s
-                        RETURNING id, name, username;
+                        RETURNING id, name, title, username;
                     """, (
-                        payload.name, payload.department, payload.phone, payload.email,
+                        payload.name, payload.title or "", payload.department, payload.phone, payload.email,
                         payload.role, payload.allowedMenus, payload.status, payload.password,
                         payload.updatedBy or "系統使用者", userId
                     ))
                 else:
                     cur.execute("""
                         UPDATE users
-                        SET name = %s, department = %s, phone = %s, email = %s,
+                        SET name = %s, title = %s, department = %s, phone = %s, email = %s,
                             role = %s, allowed_menus = %s, status = %s,
                             updated_by = %s, updated_at = CURRENT_TIMESTAMP
                         WHERE id = %s
-                        RETURNING id, name, username;
+                        RETURNING id, name, title, username;
                     """, (
-                        payload.name, payload.department, payload.phone, payload.email,
+                        payload.name, payload.title or "", payload.department, payload.phone, payload.email,
                         payload.role, payload.allowedMenus, payload.status,
                         payload.updatedBy or "系統使用者", userId
                     ))

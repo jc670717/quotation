@@ -566,9 +566,15 @@ function openChangePasswordModal() {
   const modalEl = document.getElementById('changePasswordModal');
   if (!modalEl) return;
 
-  const usernameInput = document.getElementById('cp_username');
-  if (usernameInput) {
-    usernameInput.value = appState.currentUser ? (appState.currentUser.username + (appState.currentUser.name ? ` (${appState.currentUser.name})` : '')) : '';
+  const userDisplayEl = document.getElementById('cp_current_user_name');
+  if (userDisplayEl) {
+    if (appState.currentUser) {
+      const roleStr = appState.currentUser.role === 'ADMIN' ? '系統管理者' : '一般使用者';
+      const titleStr = appState.currentUser.title ? ` · ${appState.currentUser.title}` : '';
+      userDisplayEl.textContent = `${appState.currentUser.name} (${appState.currentUser.username}) · ${roleStr}${titleStr}`;
+    } else {
+      userDisplayEl.textContent = '尚未登入，請先登入系統';
+    }
   }
   const oldPwd = document.getElementById('cp_old_password');
   if (oldPwd) oldPwd.value = '';
@@ -577,10 +583,12 @@ function openChangePasswordModal() {
   const confirmPwd = document.getElementById('cp_confirm_password');
   if (confirmPwd) confirmPwd.value = '';
 
-  const errEl = document.getElementById('changePasswordError');
-  if (errEl) errEl.classList.add('d-none');
-  const succEl = document.getElementById('changePasswordSuccess');
-  if (succEl) succEl.classList.add('d-none');
+  const alertEl = document.getElementById('changePasswordAlert');
+  if (alertEl) {
+    alertEl.classList.add('d-none');
+    alertEl.className = 'alert alert-danger py-2 px-3 small d-none mb-3';
+    alertEl.textContent = '';
+  }
 
   const modal = new bootstrap.Modal(modalEl);
   modal.show();
@@ -593,61 +601,77 @@ async function handleChangePassword(event) {
   const releaseSubmitLock = acquireFormSubmitLock(form);
   if (!releaseSubmitLock) return;
 
-  const errEl = document.getElementById('changePasswordError');
-  const succEl = document.getElementById('changePasswordSuccess');
-  if (errEl) errEl.classList.add('d-none');
-  if (succEl) succEl.classList.add('d-none');
+  const alertEl = document.getElementById('changePasswordAlert');
+  const showAlertMsg = (msg, isSuccess = false) => {
+    if (!alertEl) return;
+    alertEl.className = `alert alert-${isSuccess ? 'success' : 'danger'} py-2 px-3 small mb-3`;
+    alertEl.textContent = msg;
+    alertEl.classList.remove('d-none');
+  };
+
+  if (alertEl) alertEl.classList.add('d-none');
 
   const oldPassword = document.getElementById('cp_old_password')?.value || '';
   const newPassword = document.getElementById('cp_new_password')?.value || '';
   const confirmPassword = document.getElementById('cp_confirm_password')?.value || '';
 
+  if (!appState.currentUser || !appState.currentUser.username) {
+    showAlertMsg('無法取得目前登入之使用者資訊，請重新登入。');
+    releaseSubmitLock();
+    return;
+  }
+
   if (!newPassword || newPassword.length < 4) {
-    if (errEl) {
-      errEl.textContent = '新密碼長度至少需為 4 個字元';
-      errEl.classList.remove('d-none');
-    }
+    showAlertMsg('新密碼長度至少需為 4 個字元');
     releaseSubmitLock();
     return;
   }
 
   if (newPassword !== confirmPassword) {
-    if (errEl) {
-      errEl.textContent = '兩次輸入的新密碼不相符，請重新確認';
-      errEl.classList.remove('d-none');
-    }
+    showAlertMsg('兩次輸入的新密碼不相符，請重新確認');
     releaseSubmitLock();
     return;
   }
 
-  const username = appState.currentUser ? appState.currentUser.username : '';
-  const res = await fetchApi('/api/auth/change-password', {
-    method: 'POST',
-    body: JSON.stringify({
-      username,
-      oldPassword,
-      newPassword
-    })
-  });
-
-  if (res.success) {
-    if (succEl) {
-      succEl.textContent = res.message || '密碼修改成功！';
-      succEl.classList.remove('d-none');
-    }
-    showAlert('密碼已成功變更，請妥善保管您的新密碼！', 'success');
-    setTimeout(() => {
-      const modalEl = document.getElementById('changePasswordModal');
-      const modal = bootstrap.Modal.getInstance(modalEl);
-      if (modal) modal.hide();
-    }, 1200);
-  } else {
-    if (errEl) {
-      errEl.textContent = res.message || '密碼變更失敗，請確認原密碼是否正確。';
-      errEl.classList.remove('d-none');
-    }
+  const submitBtn = document.getElementById('changePasswordSubmitBtn');
+  const originalBtnText = submitBtn ? submitBtn.innerHTML : '確認更新密碼';
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> 更新中...';
   }
-  releaseSubmitLock();
+
+  try {
+    const res = await fetchApi('/api/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify({
+        username: appState.currentUser.username,
+        oldPassword,
+        newPassword
+      })
+    });
+
+    if (res && res.success) {
+      showAlertMsg(res.message || '密碼已成功更新！', true);
+      showAlert('密碼已成功變更，請妥善保管您的新密碼！', 'success');
+      setTimeout(() => {
+        const modalEl = document.getElementById('changePasswordModal');
+        if (modalEl) {
+          const modal = bootstrap.Modal.getInstance(modalEl);
+          if (modal) modal.hide();
+        }
+      }, 1200);
+    } else {
+      showAlertMsg(res && res.message ? res.message : '密碼變更失敗，請確認原密碼是否正確。');
+    }
+  } catch (err) {
+    showAlertMsg('連線異常，更新密碼失敗，請稍後再試。');
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = originalBtnText;
+    }
+    releaseSubmitLock();
+  }
 }
 
 // 開啟切換使用者 Modal
@@ -806,11 +830,11 @@ function renderDashboardStatusDistribution(statusCounts) {
   container.innerHTML = '';
 
   const statusMeta = {
-    DRAFT: { name: '草稿 (Draft)', class: 'badge-draft' },
-    SENT: { name: '已送出 (Sent)', class: 'badge-sent' },
-    ACCEPTED: { name: '已核准 (Accepted)', class: 'badge-accepted' },
-    REJECTED: { name: '已拒絕 (Rejected)', class: 'badge-rejected' },
-    EXPIRED: { name: '已過期 (Expired)', class: 'badge-expired' }
+    DRAFT: { name: '草稿', class: 'badge-draft' },
+    SENT: { name: '已送出', class: 'badge-sent' },
+    ACCEPTED: { name: '已核准', class: 'badge-accepted' },
+    REJECTED: { name: '已拒絕', class: 'badge-rejected' },
+    EXPIRED: { name: '已過期', class: 'badge-expired' }
   };
 
   let hasAnyNonZero = false;
@@ -821,7 +845,7 @@ function renderDashboardStatusDistribution(statusCounts) {
     if (count > 0) {
       hasAnyNonZero = true;
       const badge = document.createElement('div');
-      badge.className = `p-2 px-3 rounded border d-flex align-items-center gap-2 bg-white shadow-sm`;
+      badge.className = `p-2 px-3 rounded border d-flex align-items-center gap-2 bg-white shadow-sm text-nowrap`;
       badge.innerHTML = `
         <span class="${meta.class}">${meta.name}</span>
         <span class="fs-5 fw-bold text-dark font-monospace">${count}</span>
@@ -836,14 +860,14 @@ function renderDashboardStatusDistribution(statusCounts) {
   }
 }
 
-// 儀表板最近報價單清單
+// 儀表板最近報價單清單 (全寬上下堆疊結構)
 function renderDashboardRecentQuotations(quotations) {
   const tbody = document.getElementById('dashboardRecentQuotationsTbody');
   if (!tbody) return;
   tbody.innerHTML = '';
 
   if (quotations.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-muted">尚無報價單紀錄</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-muted">尚無報價單紀錄</td></tr>';
     return;
   }
 
@@ -862,12 +886,13 @@ function renderDashboardRecentQuotations(quotations) {
     const canManage = canManageQuotation(q);
 
     tr.innerHTML = `
-      <td><span class="quotation-code">${q.quotationNumber}</span></td>
-      <td><div class="fw-semibold text-dark">${q.customerName}</div></td>
-      <td><span class="fw-bold text-dark">${formatCurrency(q.totalAmount)}</span></td>
-      <td><span class="text-success fw-bold">${formatCurrency(profit)}</span> <small class="text-muted">(${margin}%)</small></td>
-      <td>${statusBadges[q.status] || q.status}</td>
-      <td class="text-end">
+      <td class="text-nowrap"><span class="quotation-code">${q.quotationNumber}</span></td>
+      <td class="text-nowrap"><div class="fw-semibold text-dark">${q.customerName}</div></td>
+      <td class="text-nowrap"><span class="small text-muted">${formatDate(q.issueDate)}</span></td>
+      <td class="text-nowrap"><span class="fw-bold text-dark">${formatCurrency(q.totalAmount)}</span></td>
+      <td class="text-nowrap"><span class="text-success fw-bold">${formatCurrency(profit)}</span> <small class="text-muted">(${margin}%)</small></td>
+      <td class="text-nowrap">${statusBadges[q.status] || q.status}</td>
+      <td class="text-end text-nowrap">
         <div class="btn-group btn-group-sm action-icon-group">
           <button class="btn action-icon-btn" onclick="openViewQuotationModal(${q.id})" title="檢視報價單" aria-label="檢視報價單">👁️</button>
           ${canManage && q.status === 'ACCEPTED' && !q.hasTransaction ? `<button class="btn action-icon-btn" onclick="convertToTransaction(${q.id})" title="轉為交易單" aria-label="轉為交易單">💳</button>` : ''}
@@ -878,14 +903,14 @@ function renderDashboardRecentQuotations(quotations) {
   });
 }
 
-// 儀表板最近交易單清單
+// 儀表板最近交易單清單 (全寬上下堆疊結構)
 function renderDashboardRecentTransactions(transactions) {
   const tbody = document.getElementById('dashboardRecentTransactionsTbody');
   if (!tbody) return;
   tbody.innerHTML = '';
 
   if (transactions.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-muted">尚無交易立案紀錄</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-muted">尚無交易立案紀錄</td></tr>';
     return;
   }
 
@@ -893,19 +918,23 @@ function renderDashboardRecentTransactions(transactions) {
     const tr = document.createElement('tr');
     const paymentBadges = {
       PAID: '<span class="badge bg-success-subtle text-success border border-success-subtle">已結案</span>',
-      PARTIAL: '<span class="badge bg-warning-subtle text-warning border border-warning-subtle">部分付</span>',
+      PARTIAL: '<span class="badge bg-warning-subtle text-warning border border-warning-subtle">部分付款</span>',
       PENDING: '<span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">待付款</span>',
       REFUNDED: '<span class="badge bg-danger-subtle text-danger border border-danger-subtle">已退款</span>'
     };
 
     tr.innerHTML = `
-      <td><span class="quotation-code font-monospace">${t.transactionNumber}</span></td>
-      <td><div class="fw-semibold text-dark text-truncate" style="max-width: 120px;">${t.customerName}</div></td>
-      <td>
-        <div class="small fw-bold text-primary">${formatCurrency(t.paidAmount || 0)}</div>
-        <div class="small text-muted">總: ${formatCurrency(t.totalAmount)}</div>
+      <td class="text-nowrap"><span class="quotation-code font-monospace">${t.transactionNumber}</span></td>
+      <td class="text-nowrap"><div class="fw-semibold text-dark">${t.customerName}</div></td>
+      <td class="text-nowrap"><span class="small text-muted">${formatDate(t.transactionDate)}</span></td>
+      <td class="text-nowrap"><span class="fw-bold text-primary">${formatCurrency(t.paidAmount || 0)}</span></td>
+      <td class="text-nowrap"><span class="fw-bold text-dark">${formatCurrency(t.totalAmount)}</span></td>
+      <td class="text-nowrap">${paymentBadges[t.paymentStatus] || t.paymentStatus}</td>
+      <td class="text-end text-nowrap">
+        <div class="btn-group btn-group-sm action-icon-group">
+          <button class="btn action-icon-btn" onclick="openEditTransactionModal(${t.id})" title="管理交易與發票" aria-label="管理交易與發票">✏️</button>
+        </div>
       </td>
-      <td>${paymentBadges[t.paymentStatus] || t.paymentStatus}</td>
     `;
     tbody.appendChild(tr);
   });
@@ -938,27 +967,27 @@ function renderCustomersTable(customers) {
     const tr = document.createElement('tr');
     const contactDeptTitle = [c.department, c.title].filter(Boolean).join(' · ');
     tr.innerHTML = `
-      <td><span class="quotation-code">${c.customerCode || '-'}</span></td>
-      <td>
-        <div class="fw-bold text-dark">${c.customerName}</div>
-        <div class="small text-muted">${c.notes || ''}</div>
+      <td class="text-nowrap"><span class="quotation-code">${c.customerCode || '-'}</span></td>
+      <td class="text-nowrap">
+        <div class="fw-bold text-dark text-nowrap">${c.customerName}</div>
+        ${c.notes ? `<div class="small text-muted text-nowrap">${c.notes}</div>` : ''}
       </td>
-      <td><span class="font-monospace">${c.taxId || '-'}</span></td>
-      <td>
-        <div class="fw-semibold">${c.contactPerson || '-'}</div>
-        ${contactDeptTitle ? `<div class="small text-muted">${contactDeptTitle}</div>` : ''}
+      <td class="text-nowrap"><span class="font-monospace">${c.taxId || '-'}</span></td>
+      <td class="text-nowrap">
+        <div class="fw-semibold text-nowrap">${c.contactPerson || '-'}</div>
+        ${contactDeptTitle ? `<div class="small text-muted text-nowrap">${contactDeptTitle}</div>` : ''}
       </td>
-      <td>
-        <div>📞 ${c.phone || '-'}</div>
-        ${c.fax ? `<div class="small text-muted">📠 傳真: ${c.fax}</div>` : ''}
-        <div class="small text-muted">✉️ ${c.email || '-'}</div>
+      <td class="text-nowrap">
+        <div class="text-nowrap">📞 ${c.phone || '-'}</div>
+        ${c.fax ? `<div class="small text-muted text-nowrap">📠 傳真: ${c.fax}</div>` : ''}
+        <div class="small text-muted text-nowrap">✉️ ${c.email || '-'}</div>
       </td>
-      <td><small class="text-secondary">${c.address || '-'}</small></td>
-      <td>
-        <div class="small fw-semibold text-dark">${c.updatedBy || c.createdBy || '系統管理者'}</div>
-        <div class="small text-muted">${formatDateTime(c.updatedAt || c.createdAt)}</div>
+      <td class="text-nowrap"><small class="text-secondary text-nowrap">${c.address || '-'}</small></td>
+      <td class="text-nowrap">
+        <div class="small fw-semibold text-dark text-nowrap">${c.updatedBy || c.createdBy || '系統管理者'}</div>
+        <div class="small text-muted text-nowrap">${formatDateTime(c.updatedAt || c.createdAt)}</div>
       </td>
-      <td class="text-end">
+      <td class="text-end text-nowrap">
         <div class="btn-group btn-group-sm action-icon-group">
           <button class="btn action-icon-btn" onclick="openEditCustomerModal(${c.id})" title="編輯客戶" aria-label="編輯客戶">✏️</button>
           <button class="btn action-icon-btn" onclick="confirmDeleteCustomer(${c.id}, '${c.customerName}')" title="刪除客戶" aria-label="刪除客戶">🗑️</button>
@@ -1108,27 +1137,27 @@ function renderVendorsTable(vendors) {
   vendors.forEach(v => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td><span class="quotation-code">${v.vendorCode || '-'}</span></td>
-      <td>
-        <div class="fw-bold text-dark">${v.vendorName}</div>
-        <div class="small text-muted">${v.notes || ''}</div>
+      <td class="text-nowrap"><span class="quotation-code">${v.vendorCode || '-'}</span></td>
+      <td class="text-nowrap">
+        <div class="fw-bold text-dark text-nowrap">${v.vendorName}</div>
+        ${v.notes ? `<div class="small text-muted text-nowrap">${v.notes}</div>` : ''}
       </td>
-      <td><span class="font-monospace">${v.taxId || '-'}</span></td>
-      <td><span class="fw-semibold">${v.contactPerson || '-'}</span></td>
-      <td>
-        <div>📞 ${v.phone || '-'}</div>
-        <div class="small text-muted">✉️ ${v.email || '-'}</div>
+      <td class="text-nowrap"><span class="font-monospace">${v.taxId || '-'}</span></td>
+      <td class="text-nowrap"><span class="fw-semibold">${v.contactPerson || '-'}</span></td>
+      <td class="text-nowrap">
+        <div class="text-nowrap">📞 ${v.phone || '-'}</div>
+        <div class="small text-muted text-nowrap">✉️ ${v.email || '-'}</div>
       </td>
-      <td><small class="text-dark fw-semibold">${v.productsAndServices || '-'}</small></td>
-      <td>
-        <span class="badge bg-primary-subtle text-primary border border-primary-subtle">${v.totalProducts || 0} 種產品</span>
-        <div class="small text-muted mt-1">合作 ${v.cooperationCount || 0} 次</div>
+      <td class="text-nowrap"><small class="text-dark fw-semibold text-nowrap">${v.productsAndServices || '-'}</small></td>
+      <td class="text-nowrap">
+        <span class="badge bg-primary-subtle text-primary border border-primary-subtle text-nowrap">${v.totalProducts || 0} 種產品</span>
+        <div class="small text-muted mt-1 text-nowrap">合作 ${v.cooperationCount || 0} 次</div>
       </td>
-      <td>
-        <div class="small fw-semibold text-dark">${v.updatedBy || v.createdBy || '系統管理者'}</div>
-        <div class="small text-muted">${formatDateTime(v.updatedAt || v.createdAt)}</div>
+      <td class="text-nowrap">
+        <div class="small fw-semibold text-dark text-nowrap">${v.updatedBy || v.createdBy || '系統管理者'}</div>
+        <div class="small text-muted text-nowrap">${formatDateTime(v.updatedAt || v.createdAt)}</div>
       </td>
-      <td class="text-end">
+      <td class="text-end text-nowrap">
         <div class="btn-group btn-group-sm action-icon-group">
           <button class="btn action-icon-btn" onclick="openEditVendorModal(${v.id})" title="編輯廠商" aria-label="編輯廠商">✏️</button>
           <button class="btn action-icon-btn" onclick="confirmDeleteVendor(${v.id}, '${v.vendorName}')" title="刪除廠商" aria-label="刪除廠商">🗑️</button>
@@ -1277,32 +1306,32 @@ function renderProductsTable(products) {
       `<div class="bg-light rounded border text-muted d-flex align-items-center justify-content-center small" style="width: 48px; height: 48px;">📦</div>`;
 
     tr.innerHTML = `
-      <td>${thumbHtml}</td>
-      <td><span class="quotation-code">${p.productCode || '-'}</span></td>
-      <td>
-        <div class="fw-bold text-dark">${p.productName}</div>
-        <div class="small text-muted text-truncate" style="max-width: 220px;">${p.description || ''}</div>
-      </td>
-      <td>
-        <div class="fw-semibold text-dark">${p.brand ? p.brand : '<span class="text-muted small">-</span>'}</div>
-        <div class="small text-muted font-monospace">${p.model ? p.model : '<span class="text-muted small">-</span>'}</div>
-      </td>
-      <td><span class="badge bg-secondary-subtle text-secondary">${p.category || '一般'}</span></td>
-      <td><span class="text-muted">${p.unit || '件'}</span></td>
-      <td class="text-nowrap"><span class="text-danger fw-semibold">${formatCurrency(cost)}</span></td>
-      <td class="text-nowrap"><span class="text-primary fw-bold">${formatCurrency(price)}</span></td>
+      <td class="text-nowrap">${thumbHtml}</td>
+      <td class="text-nowrap"><span class="quotation-code">${p.productCode || '-'}</span></td>
       <td class="text-nowrap">
-        <span class="fw-bold text-success">${formatCurrency(profit)}</span>
-        <div class="small text-muted">(${margin}%)</div>
+        <div class="fw-bold text-dark text-nowrap">${p.productName}</div>
+        ${p.description ? `<div class="small text-muted text-nowrap">${p.description}</div>` : ''}
       </td>
-      <td>
-        ${p.status === 'ACTIVE' ? '<span class="badge bg-success-subtle text-success">銷售中</span>' : '<span class="badge bg-secondary-subtle text-secondary">已停售</span>'}
+      <td class="text-nowrap">
+        <div class="fw-semibold text-dark text-nowrap">${p.brand ? p.brand : '<span class="text-muted small">-</span>'}</div>
+        <div class="small text-muted font-monospace text-nowrap">${p.model ? p.model : '<span class="text-muted small">-</span>'}</div>
       </td>
-      <td>
-        <div class="small fw-semibold text-dark">${p.updatedBy || p.createdBy || '系統管理者'}</div>
-        <div class="small text-muted">${formatDateTime(p.updatedAt || p.createdAt)}</div>
+      <td class="text-nowrap"><span class="badge bg-secondary-subtle text-secondary text-nowrap">${p.category || '一般'}</span></td>
+      <td class="text-nowrap"><span class="text-muted text-nowrap">${p.unit || '件'}</span></td>
+      <td class="text-nowrap"><span class="text-danger fw-semibold text-nowrap">${formatCurrency(cost)}</span></td>
+      <td class="text-nowrap"><span class="text-primary fw-bold text-nowrap">${formatCurrency(price)}</span></td>
+      <td class="text-nowrap">
+        <span class="fw-bold text-success text-nowrap">${formatCurrency(profit)}</span>
+        <div class="small text-muted text-nowrap">(${margin}%)</div>
       </td>
-      <td class="text-end">
+      <td class="text-nowrap">
+        ${p.status === 'ACTIVE' ? '<span class="badge bg-success-subtle text-success text-nowrap">銷售中</span>' : '<span class="badge bg-secondary-subtle text-secondary text-nowrap">已停售</span>'}
+      </td>
+      <td class="text-nowrap">
+        <div class="small fw-semibold text-dark text-nowrap">${p.updatedBy || p.createdBy || '系統管理者'}</div>
+        <div class="small text-muted text-nowrap">${formatDateTime(p.updatedAt || p.createdAt)}</div>
+      </td>
+      <td class="text-end text-nowrap">
         <div class="btn-group btn-group-sm action-icon-group">
           <button class="btn action-icon-btn" onclick="openEditProductModal(${p.id})" title="編輯產品" aria-label="編輯產品">✏️</button>
           <button class="btn action-icon-btn" onclick="confirmDeleteProduct(${p.id}, '${p.productName}')" title="刪除產品" aria-label="刪除產品">🗑️</button>
@@ -1560,26 +1589,26 @@ function renderQuotationsTable(quotations) {
     const canManage = canManageQuotation(q);
 
     tr.innerHTML = `
-      <td>
-        <div class="quotation-code fw-bold mb-1">${q.quotationNumber}</div>
-        <span class="badge bg-light text-dark border">${q.companyName || '極簡資訊科技'}</span>
-      </td>
-      <td>
-        <div class="fw-bold text-dark">${q.customerName}</div>
-        <div class="small text-muted">${q.customerContactPerson ? `窗口: ${q.customerContactPerson}` : ''}</div>
-      </td>
-      <td class="text-nowrap"><span class="small">${formatDate(q.issueDate)}</span></td>
-      <td>${statusBadges[q.status] || q.status}</td>
-      <td class="text-nowrap"><span class="fw-bold text-primary">${formatCurrency(q.totalAmount)}</span></td>
       <td class="text-nowrap">
-        <div class="text-danger small mb-1">成本: ${formatCurrency(q.totalCost || 0)}</div>
-        <div class="text-success fw-bold">毛利: ${formatCurrency(profit)} <small class="text-muted">(${margin}%)</small></div>
+        <div class="quotation-code fw-bold mb-1">${q.quotationNumber}</div>
+        <span class="badge bg-light text-dark border text-nowrap">${q.companyName || '極簡資訊科技'}</span>
       </td>
-      <td>
-        <div class="small fw-semibold text-dark">${q.updatedBy || q.createdBy || '系統管理者'}</div>
-        <div class="small text-muted">${formatDateTime(q.updatedAt || q.createdAt)}</div>
+      <td class="text-nowrap">
+        <div class="fw-bold text-dark text-nowrap">${q.customerName}</div>
+        ${q.customerContactPerson ? `<div class="small text-muted text-nowrap">窗口: ${q.customerContactPerson}</div>` : ''}
       </td>
-      <td class="text-end">
+      <td class="text-nowrap"><span class="small text-nowrap">${formatDate(q.issueDate)}</span></td>
+      <td class="text-nowrap">${statusBadges[q.status] || q.status}</td>
+      <td class="text-nowrap"><span class="fw-bold text-primary text-nowrap">${formatCurrency(q.totalAmount)}</span></td>
+      <td class="text-nowrap">
+        <div class="text-danger small mb-1 text-nowrap">成本: ${formatCurrency(q.totalCost || 0)}</div>
+        <div class="text-success fw-bold text-nowrap">毛利: ${formatCurrency(profit)} <small class="text-muted">(${margin}%)</small></div>
+      </td>
+      <td class="text-nowrap">
+        <div class="small fw-semibold text-dark text-nowrap">${q.updatedBy || q.createdBy || '系統管理者'}</div>
+        <div class="small text-muted text-nowrap">${formatDateTime(q.updatedAt || q.createdAt)}</div>
+      </td>
+      <td class="text-end text-nowrap">
         <div class="btn-group btn-group-sm action-icon-group">
           <button class="btn action-icon-btn" onclick="openViewQuotationModal(${q.id})" title="檢視正式報價單" aria-label="檢視正式報價單">👁️</button>
           ${canManage && q.status === 'ACCEPTED' && !q.hasTransaction ? `<button class="btn action-icon-btn" onclick="convertToTransaction(${q.id})" title="轉為交易單" aria-label="轉為交易單">💳</button>` : ''}
@@ -2330,31 +2359,31 @@ function renderTransactionsTable(transactions) {
       `<span class="text-muted small">尚未開立</span>`;
 
     tr.innerHTML = `
-      <td>
-        <div class="quotation-code fw-bold mb-1">${t.transactionNumber}</div>
-        <div class="small text-muted"><span class="text-secondary">報價:</span> <span class="font-monospace">${t.quotationNumber || '手動建立'}</span></div>
-      </td>
-      <td>
-        <div class="fw-bold text-dark">${t.customerName}</div>
-        <div class="small text-muted">${t.customerEmail || ''}</div>
-      </td>
-      <td><span class="small">${formatDate(t.transactionDate)}</span></td>
-      <td><span class="fw-bold text-primary">${formatCurrency(total)}</span></td>
       <td class="text-nowrap">
-        <div class="text-danger small mb-1">成本: ${formatCurrency(cost)}</div>
-        <div class="text-success fw-bold">毛利: ${formatCurrency(profit)} <small class="text-muted">(${margin}%)</small></div>
+        <div class="quotation-code fw-bold mb-1">${t.transactionNumber}</div>
+        <div class="small text-muted text-nowrap"><span class="text-secondary">報價:</span> <span class="font-monospace">${t.quotationNumber || '手動建立'}</span></div>
       </td>
-      <td>
-        <div class="small fw-bold text-primary">已收: ${formatCurrency(paid)}</div>
-        <div class="small fw-semibold ${remaining > 0 ? 'text-danger' : 'text-muted'}">待收: ${formatCurrency(remaining)}</div>
+      <td class="text-nowrap">
+        <div class="fw-bold text-dark text-nowrap">${t.customerName}</div>
+        ${t.customerEmail ? `<div class="small text-muted text-nowrap">✉️ ${t.customerEmail}</div>` : ''}
       </td>
-      <td>${invoiceBadge}</td>
-      <td>${paymentBadges[t.paymentStatus] || t.paymentStatus}</td>
-      <td>
-        <div class="small fw-semibold text-dark">${t.updatedBy || t.createdBy || '系統管理者'}</div>
-        <div class="small text-muted">${formatDateTime(t.updatedAt || t.createdAt)}</div>
+      <td class="text-nowrap"><span class="small text-nowrap">${formatDate(t.transactionDate)}</span></td>
+      <td class="text-nowrap"><span class="fw-bold text-primary text-nowrap">${formatCurrency(total)}</span></td>
+      <td class="text-nowrap">
+        <div class="text-danger small mb-1 text-nowrap">成本: ${formatCurrency(cost)}</div>
+        <div class="text-success fw-bold text-nowrap">毛利: ${formatCurrency(profit)} <small class="text-muted">(${margin}%)</small></div>
       </td>
-      <td class="text-end">
+      <td class="text-nowrap">
+        <div class="text-nowrap"><span class="text-secondary small">已收：</span><span class="fw-bold text-primary">${formatCurrency(paid)}</span></div>
+        <div class="text-nowrap"><span class="text-secondary small">待收：</span><span class="fw-bold ${remaining > 0 ? 'text-danger' : 'text-muted'}">${formatCurrency(remaining)}</span></div>
+      </td>
+      <td class="text-nowrap">${invoiceBadge}</td>
+      <td class="text-nowrap">${paymentBadges[t.paymentStatus] || t.paymentStatus}</td>
+      <td class="text-nowrap">
+        <div class="small fw-semibold text-dark text-nowrap">${t.updatedBy || t.createdBy || '系統管理者'}</div>
+        <div class="small text-muted text-nowrap">${formatDateTime(t.updatedAt || t.createdAt)}</div>
+      </td>
+      <td class="text-end text-nowrap">
         <div class="btn-group btn-group-sm action-icon-group">
           <button class="btn action-icon-btn" onclick="openEditTransactionModal(${t.id})" title="管理交易與發票" aria-label="管理交易與發票">✏️</button>
           <button class="btn action-icon-btn" onclick="confirmDeleteTransaction(${t.id}, '${t.transactionNumber}')" title="刪除交易" aria-label="刪除交易">🗑️</button>
@@ -2903,38 +2932,31 @@ function renderUsersTable(users) {
   users.forEach(u => {
     const tr = document.createElement('tr');
     const roleBadge = u.role === 'ADMIN' ? 
-      '<span class="badge bg-danger-subtle text-danger border border-danger-subtle">系統管理者 (ADMIN)</span>' : 
-      '<span class="badge bg-primary-subtle text-primary border border-primary-subtle">一般使用者 (USER)</span>';
+      '<span class="badge bg-danger-subtle text-danger border border-danger-subtle">系統管理者</span>' : 
+      '<span class="badge bg-primary-subtle text-primary border border-primary-subtle">一般使用者</span>';
 
     const allowed = Array.isArray(u.allowedMenus) ? u.allowedMenus : (typeof u.allowedMenus === 'string' ? u.allowedMenus.split(',') : []);
     const menusChips = u.role === 'ADMIN' ? 
-      '<span class="badge bg-dark text-white">✨ 全部 9 項功能完全存取</span>' :
-      allowed.map(m => `<span class="badge bg-light text-secondary border me-1 mb-1">${menuLabels[m] || m}</span>`).join('');
+      '<span class="badge bg-dark text-white text-nowrap">✨ 全部 9 項功能完全存取</span>' :
+      allowed.map(m => `<span class="badge bg-light text-secondary border me-1 mb-1 text-nowrap">${menuLabels[m] || m}</span>`).join('');
 
     tr.innerHTML = `
-      <td>
-        <div class="d-flex align-items-center gap-2">
-          <div class="rounded-circle d-flex align-items-center justify-content-center bg-primary text-white fw-bold" style="width: 32px; height: 32px; font-size: 0.8rem;">
-            ${(u.name || u.username).substring(0, 1)}
-          </div>
-          <div>
-            <div class="fw-bold text-dark">${u.name} ${u.title ? `<span class="badge bg-secondary-subtle text-secondary ms-1 fw-normal">${u.title}</span>` : ''}</div>
-            <div class="small text-muted">${u.phone || ''}</div>
-          </div>
-        </div>
+      <td class="text-nowrap">
+        <div class="fw-bold text-dark text-nowrap">${u.name} ${u.title ? `<span class="badge bg-secondary-subtle text-secondary ms-1 fw-normal text-nowrap">${u.title}</span>` : ''}</div>
+        ${u.phone ? `<div class="small text-muted text-nowrap">${u.phone}</div>` : ''}
       </td>
-      <td><span class="font-monospace fw-semibold">${u.username}</span></td>
-      <td><span class="text-secondary">${u.department || '-'}${u.title ? ` (${u.title})` : ''}</span></td>
-      <td>${roleBadge}</td>
+      <td class="text-nowrap"><span class="font-monospace fw-semibold">${u.username}</span></td>
+      <td class="text-nowrap"><span class="text-secondary">${u.department || '-'}${u.title ? ` (${u.title})` : ''}</span></td>
+      <td class="text-nowrap">${roleBadge}</td>
       <td><div class="d-flex flex-wrap" style="max-width: 280px;">${menusChips}</div></td>
-      <td>
-        ${u.status === 'ACTIVE' ? '<span class="badge bg-success-subtle text-success">正常</span>' : '<span class="badge bg-secondary-subtle text-secondary">停用</span>'}
+      <td class="text-nowrap">
+        ${u.status === 'ACTIVE' ? '<span class="badge bg-success-subtle text-success text-nowrap">正常</span>' : '<span class="badge bg-secondary-subtle text-secondary text-nowrap">停用</span>'}
       </td>
-      <td>
-        <div class="small fw-semibold text-dark">${u.updatedBy || u.createdBy || '系統管理者'}</div>
-        <div class="small text-muted">${formatDateTime(u.updatedAt || u.createdAt)}</div>
+      <td class="text-nowrap">
+        <div class="small fw-semibold text-dark text-nowrap">${u.updatedBy || u.createdBy || '系統管理者'}</div>
+        <div class="small text-muted text-nowrap">${formatDateTime(u.updatedAt || u.createdAt)}</div>
       </td>
-      <td class="text-end">
+      <td class="text-end text-nowrap">
         <div class="btn-group btn-group-sm action-icon-group">
           <button class="btn action-icon-btn" onclick="openEditUserModal(${u.id})" title="編輯權限" aria-label="編輯權限">✏️</button>
           ${u.id !== 1 ? `<button class="btn action-icon-btn" onclick="confirmDeleteUser(${u.id}, '${u.name}')" title="刪除使用者" aria-label="刪除使用者">🗑️</button>` : ''}
@@ -3101,18 +3123,18 @@ function renderAuditLogsTable(logs) {
   logs.forEach(log => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td><span class="font-monospace text-muted">#${log.id}</span></td>
-      <td><span class="small text-dark font-monospace">${formatDateTime(log.createdAt)}</span></td>
-      <td><span class="badge bg-light text-dark border">${log.moduleTitle || log.module}</span></td>
-      <td>${actionBadges[log.actionType] || `<span class="badge bg-secondary">${log.actionTitle || log.actionType}</span>`}</td>
-      <td>
-        <div class="fw-bold text-dark font-monospace">${log.targetId || '-'}</div>
-        <div class="small text-muted">${log.targetName || ''}</div>
+      <td class="text-nowrap"><span class="font-monospace text-muted">#${log.id}</span></td>
+      <td class="text-nowrap"><span class="small text-dark font-monospace text-nowrap">${formatDateTime(log.createdAt)}</span></td>
+      <td class="text-nowrap"><span class="badge bg-light text-dark border text-nowrap">${log.moduleTitle || log.module}</span></td>
+      <td class="text-nowrap">${actionBadges[log.actionType] || `<span class="badge bg-secondary text-nowrap">${log.actionTitle || log.actionType}</span>`}</td>
+      <td class="text-nowrap">
+        <div class="fw-bold text-dark font-monospace text-nowrap">${log.targetId || '-'}</div>
+        ${log.targetName ? `<div class="small text-muted text-nowrap">${log.targetName}</div>` : ''}
       </td>
-      <td>
-        <div class="fw-semibold text-primary">${log.operator || '系統管理者'}</div>
+      <td class="text-nowrap">
+        <div class="fw-semibold text-primary text-nowrap">${log.operator || '系統管理者'}</div>
       </td>
-      <td><span class="text-secondary small">${log.details || '-'}</span></td>
+      <td class="text-nowrap"><span class="text-secondary small text-nowrap">${log.details || '-'}</span></td>
     `;
     tbody.appendChild(tr);
   });
