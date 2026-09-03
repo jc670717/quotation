@@ -23,6 +23,7 @@
               <div class="d-flex align-items-center gap-3 mb-4">
                 <div class="sidebar-brand-icon fs-4">報</div>
                 <div>
+                  <div class="fw-bold tracking-wider text-uppercase text-primary" style="font-size: 0.78rem; letter-spacing: 0.08em;">Bonjays</div>
                   <h2 class="fs-4 fw-bold text-dark mb-0">報價管理系統</h2>
                   <div class="text-muted small">Quotation & Commercial Management</div>
                 </div>
@@ -157,7 +158,7 @@
             </div>
 
             <div class="mt-3 text-muted" style="font-size: 0.75rem;">
-              💡 提示：本系統提供獨立角色權限控管與修改歷程記錄，登入後可於右上角隨時切換或登出。
+              💡 提示：本系統提供獨立角色權限控管與修改歷程記錄，登入後可隨時安全登出。
             </div>
           </div>
         </div>
@@ -176,7 +177,8 @@
         <div class="p-3 p-md-4 d-flex align-items-center gap-3 border-bottom border-slate-800">
           <div class="sidebar-brand-icon">報</div>
           <div>
-            <div class="text-white fw-bold fs-5 tracking-tight lh-1">報價管理系統</div>
+            <div class="fw-bold tracking-wider text-uppercase" style="font-size: 0.78rem; color: #60a5fa; letter-spacing: 0.08em;">Bonjays</div>
+            <div class="text-white fw-bold fs-5 tracking-tight lh-1 mt-1">報價管理系統</div>
             <small class="text-slate-400 font-monospace" style="font-size: 0.72rem;">商務經營與報價平台</small>
           </div>
         </div>
@@ -250,39 +252,31 @@
               ☰
             </button>
             <div class="d-flex align-items-center gap-2">
-              <h1 class="fs-5 fw-bold mb-0 text-dark" id="currentViewTitle">報價與商務管理控制台</h1>
-              <span class="badge bg-primary-subtle text-primary border border-primary-subtle fw-semibold px-2 py-1" id="headerYearBadge" style="font-size: 0.72rem; letter-spacing: 0.04em;">
-                2026 年度商務資料
-              </span>
+              <h1 class="fs-5 fw-bold mb-0 text-dark" id="currentViewTitle">管理控制台</h1>
             </div>
           </div>
 
           <div class="d-flex align-items-center gap-2 gap-md-3">
-            <!-- 右上角整合型使用者角色面板 (點擊可切換使用者帳號) -->
-            <div class="d-flex align-items-center gap-2 px-2 py-1 bg-white border rounded shadow-sm" role="button" onclick="openSwitchUserModal()" title="點擊切換使用者帳號與權限" style="cursor: pointer;">
-              <div class="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold flex-shrink-0" id="headerUserAvatar" style="width: 32px; height: 32px; background: linear-gradient(135deg, #2563eb, #1d4ed8); font-size: 0.82rem;">
-                管
-              </div>
-              <div class="d-none d-sm-block text-start lh-sm">
+            <!-- 右上角使用者資訊面板 -->
+            <div class="d-flex align-items-center gap-2 px-3 py-1 bg-white border rounded shadow-sm">
+              <div class="text-start lh-sm">
                 <div class="d-flex align-items-center gap-1">
                   <span class="fw-bold text-dark text-truncate" id="headerUserName" style="font-size: 0.85rem; max-width: 140px;">系統管理者</span>
                   <span class="badge bg-danger-subtle text-danger border border-danger-subtle px-1 py-0" id="headerUserRoleBadge" style="font-size: 0.65rem;">管理者</span>
                 </div>
                 <div class="text-muted text-truncate" id="headerUserDept" style="font-size: 0.72rem;">資訊管理部</div>
               </div>
-              <span class="text-secondary small ms-1">🔄</span>
             </div>
 
             <!-- 安全登出按鈕 -->
-            <button type="button" class="btn btn-outline-danger btn-sm px-2 py-1 d-flex align-items-center gap-1 shadow-sm" onclick="handleLogout()" title="安全登出系統">
-              <span>🚪</span>
-              <span class="d-none d-md-inline fw-semibold">登出</span>
+            <button type="button" class="btn btn-outline-danger btn-sm px-3 py-1 d-flex align-items-center shadow-sm" onclick="handleLogout()" title="安全登出系統">
+              <span class="fw-semibold">登出</span>
             </button>
 
             <!-- 快速新增下拉選單 -->
             <div class="dropdown">
-              <button class="btn btn-primary btn-touch shadow-sm dropdown-toggle fw-semibold" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                ➕ 快速新增
+              <button class="btn btn-primary btn-touch shadow-sm dropdown-toggle fw-semibold d-inline-flex align-items-center gap-1" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                <span class="text-white fw-bold fs-5" style="line-height: 1;">+</span> 快速新增
               </button>
               <ul class="dropdown-menu dropdown-menu-end shadow-sm">
                 <li><a class="dropdown-item py-2" href="#" onclick="openCreateQuotationModal(); return false;">📑 新增報價單 (Quotation)</a></li>
@@ -438,8 +432,8 @@
                 <h4 class="fw-bold text-dark mb-1">客戶資料管理</h4>
                 <p class="text-muted small mb-0">維護往來企業客戶聯絡窗口、統一編號與通訊資訊</p>
               </div>
-              <button type="button" class="btn btn-primary btn-touch" onclick="openCreateCustomerModal()">
-                ➕ 新增客戶
+              <button type="button" class="btn btn-primary btn-touch d-inline-flex align-items-center gap-1" onclick="openCreateCustomerModal()">
+                <span class="text-white fw-bold fs-5" style="line-height: 1;">+</span> 新增客戶
               </button>
             </div>
 
@@ -485,8 +479,8 @@
                 <h4 class="fw-bold text-dark mb-1">廠商資料管理</h4>
                 <p class="text-muted small mb-0">維護配合原廠、代理商與協力廠商資料、服務項目與供貨統計</p>
               </div>
-              <button type="button" class="btn btn-primary btn-touch" onclick="openCreateVendorModal()">
-                ➕ 新增廠商
+              <button type="button" class="btn btn-primary btn-touch d-inline-flex align-items-center gap-1" onclick="openCreateVendorModal()">
+                <span class="text-white fw-bold fs-5" style="line-height: 1;">+</span> 新增廠商
               </button>
             </div>
 
@@ -533,8 +527,8 @@
                 <h4 class="fw-bold text-dark mb-1">產品與服務品項管理</h4>
                 <p class="text-muted small mb-0">管理商品與服務庫存、上傳產品圖片、品牌型號、供應廠商及成本毛利計算</p>
               </div>
-              <button type="button" class="btn btn-primary btn-touch" onclick="openCreateProductModal()">
-                ➕ 新增產品/服務
+              <button type="button" class="btn btn-primary btn-touch d-inline-flex align-items-center gap-1" onclick="openCreateProductModal()">
+                <span class="text-white fw-bold fs-5" style="line-height: 1;">+</span> 新增產品/服務
               </button>
             </div>
 
@@ -594,8 +588,8 @@
                 <h4 class="fw-bold text-dark mb-1">報價單作業管理</h4>
                 <p class="text-muted small mb-0">建立商業報價單、選擇開立主體公司、即時計算成本毛利並一鍵拋轉立案交易</p>
               </div>
-              <button type="button" class="btn btn-primary btn-touch" onclick="openCreateQuotationModal()">
-                ➕ 新增報價單
+              <button type="button" class="btn btn-primary btn-touch d-inline-flex align-items-center gap-1" onclick="openCreateQuotationModal()">
+                <span class="text-white fw-bold fs-5" style="line-height: 1;">+</span> 新增報價單
               </button>
             </div>
 
@@ -653,8 +647,8 @@
                 <h4 class="fw-bold text-dark mb-1">交易與發票收款管理</h4>
                 <p class="text-muted small mb-0">追蹤訂單立案進度、成本毛利計算、已收款與剩餘待付款、多筆發票開立狀態</p>
               </div>
-              <button type="button" class="btn btn-primary btn-touch" onclick="openCreateTransactionModal()">
-                ➕ 新增交易單
+              <button type="button" class="btn btn-primary btn-touch d-inline-flex align-items-center gap-1" onclick="openCreateTransactionModal()">
+                <span class="text-white fw-bold fs-5" style="line-height: 1;">+</span> 新增交易單
               </button>
             </div>
 
@@ -710,11 +704,11 @@
           <div id="view-company" class="app-view" style="display: none;">
             <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
               <div>
-                <h4 class="fw-bold text-dark mb-1">主體公司基本資料管理</h4>
+                <h4 class="fw-bold text-dark mb-1">基本資料管理</h4>
                 <p class="text-muted small mb-0">支援維護多家開立主體公司、上傳企業 LOGO、設定各公司預設報價窗口與匯款帳戶</p>
               </div>
-              <button type="button" class="btn btn-primary btn-touch" onclick="openCreateCompanyModal()">
-                ➕ 新增主體公司
+              <button type="button" class="btn btn-primary btn-touch d-inline-flex align-items-center gap-1" onclick="openCreateCompanyModal()">
+                <span class="text-white fw-bold fs-5" style="line-height: 1;">+</span> 新增主體公司
               </button>
             </div>
 
@@ -881,8 +875,8 @@
                 <h4 class="fw-bold text-dark mb-1">使用者與權限管理</h4>
                 <p class="text-muted small mb-0">管理系統使用者帳號、指派管理者/一般角色與客製化 9 大選單存取權限</p>
               </div>
-              <button type="button" class="btn btn-primary btn-touch" onclick="openCreateUserModal()">
-                ➕ 新增使用者
+              <button type="button" class="btn btn-primary btn-touch d-inline-flex align-items-center gap-1" onclick="openCreateUserModal()">
+                <span class="text-white fw-bold fs-5" style="line-height: 1;">+</span> 新增使用者
               </button>
             </div>
 
@@ -916,7 +910,7 @@
           <div id="view-audit_logs" class="app-view" style="display: none;">
             <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
               <div>
-                <h4 class="fw-bold text-dark mb-1">系統作業與修改歷程記錄 (Audit Logs)</h4>
+                <h4 class="fw-bold text-dark mb-1">修改歷程記錄 (Audit Logs)</h4>
                 <p class="text-muted small mb-0">全系統各項業務新增、修改、刪除、轉交易與發票開立之完整日誌追蹤</p>
               </div>
               <button type="button" class="btn btn-outline-secondary btn-sm" onclick="loadAuditLogs()">
@@ -1076,8 +1070,8 @@
               <div class="mb-4">
                 <div class="d-flex justify-content-between align-items-center mb-2">
                   <h6 class="fw-bold text-dark mb-0">📦 報價品項明細清單</h6>
-                  <button type="button" class="btn btn-outline-primary btn-sm" onclick="addQuotationItemRow()">
-                    ➕ 新增品項列
+                  <button type="button" class="btn btn-outline-primary btn-sm d-inline-flex align-items-center gap-1" onclick="addQuotationItemRow()">
+                    <span class="fw-bold fs-6" style="line-height: 1;">+</span> 新增品項列
                   </button>
                 </div>
 
@@ -1262,8 +1256,8 @@
                     <button type="button" class="btn btn-outline-secondary btn-sm" onclick="syncPaidFromInvoices()">
                       ⚡ 依發票加總已付
                     </button>
-                    <button type="button" class="btn btn-outline-primary btn-sm" onclick="addInvoiceRow()">
-                      ➕ 新增發票
+                    <button type="button" class="btn btn-outline-primary btn-sm d-inline-flex align-items-center gap-1" onclick="addInvoiceRow()">
+                      <span class="fw-bold fs-6" style="line-height: 1;">+</span> 新增發票
                     </button>
                   </div>
                 </div>
@@ -1702,32 +1696,7 @@
       </div>
     </div>
 
-    <!-- 8. 切換使用者帳號 Modal (Switch User Modal - 位於右上角面板點擊觸發) -->
-    <div class="modal fade" id="switchUserModal" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-          <div class="modal-header bg-light">
-            <h5 class="modal-title fw-bold">🔄 切換操作使用者帳號</h5>
-            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-          </div>
-          <div class="modal-body p-3">
-            <p class="text-muted small mb-3">點擊以下使用者以切換不同身份、部門與功能選單存取權限：</p>
-            <div class="list-group" id="switchUserListGroup">
-              <!-- 動態注入使用者選項 -->
-            </div>
-          </div>
-          <div class="modal-footer d-flex justify-content-between">
-            <button type="button" class="btn btn-outline-danger btn-sm d-flex align-items-center gap-1" onclick="bootstrap.Modal.getInstance(document.getElementById('switchUserModal')).hide(); handleLogout();">
-              <span>🚪</span>
-              <span>登出目前帳號</span>
-            </button>
-            <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">關閉</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 9. 刪除確認 Modal (Delete Confirm Modal) -->
+    <!-- 8. 刪除確認 Modal (Delete Confirm Modal) -->
     <div class="modal fade" id="deleteConfirmModal" tabindex="-1" aria-hidden="true">
       <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
@@ -1744,6 +1713,21 @@
             <button type="button" class="btn btn-danger px-4" id="deleteConfirmExecuteBtn">確定刪除</button>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- 10. 全域雲端資料庫寫入過場與防抖保護遮罩 (SavingLoadingOverlay & Mutation Guard) -->
+    <div id="savingLoadingOverlay" class="d-none position-fixed top-0 start-0 w-100 h-100 flex-column align-items-center justify-content-center" style="background: rgba(15, 23, 42, 0.72); z-index: 10050; backdrop-filter: blur(5px);">
+      <div class="card shadow-lg border-0 p-4 text-center text-dark" style="max-width: 400px; border-radius: 1.25rem; animation: pulse 1.5s infinite alternate;">
+        <div class="d-flex justify-content-center mb-3">
+          <div class="spinner-border text-primary" role="status" style="width: 3.2rem; height: 3.2rem; border-width: 0.35rem;">
+            <span class="visually-hidden">儲存中...</span>
+          </div>
+        </div>
+        <h5 class="fw-bold text-dark mb-2" id="savingOverlayTitle">正在同步寫入雲端資料庫</h5>
+        <p class="text-secondary small mb-0 lh-base" id="savingOverlayText">
+          系統正在精確入庫並啟動防抖寫入保護，確保資料完整儲存且不被舊狀態覆蓋...
+        </p>
       </div>
     </div>
 
