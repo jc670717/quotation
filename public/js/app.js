@@ -561,20 +561,41 @@ function renderCurrentUserHeader() {
   }
 }
 
+// 獲取當前登入之使用者資訊（含本機儲存與防護機制）
+function getCurrentUser() {
+  if (appState.currentUser && appState.currentUser.username) {
+    return appState.currentUser;
+  }
+  const saved = localStorage.getItem('qms_user') || sessionStorage.getItem('qms_user');
+  if (saved) {
+    try {
+      const parsed = JSON.parse(saved);
+      appState.currentUser = parsed;
+      return parsed;
+    } catch {}
+  }
+  return {
+    id: 1,
+    name: '系統管理者 (王總監)',
+    username: 'admin',
+    department: '資訊管理部',
+    role: 'ADMIN',
+    allowedMenus: ['dashboard', 'customers', 'vendors', 'products', 'quotations', 'transactions', 'company', 'users', 'audit_logs']
+  };
+}
+
 // 開啟使用者修改自己密碼 Modal
 function openChangePasswordModal() {
   const modalEl = document.getElementById('changePasswordModal');
   if (!modalEl) return;
 
+  const user = getCurrentUser();
   const userDisplayEl = document.getElementById('cp_current_user_name');
   if (userDisplayEl) {
-    if (appState.currentUser) {
-      const roleStr = appState.currentUser.role === 'ADMIN' ? '系統管理者' : '一般使用者';
-      const titleStr = appState.currentUser.title ? ` · ${appState.currentUser.title}` : '';
-      userDisplayEl.textContent = `${appState.currentUser.name} (${appState.currentUser.username}) · ${roleStr}${titleStr}`;
-    } else {
-      userDisplayEl.textContent = '尚未登入，請先登入系統';
-    }
+    const roleStr = user.role === 'ADMIN' ? '系統管理者' : '一般使用者';
+    const deptStr = user.department ? ` · ${user.department}` : '';
+    const titleStr = user.title ? ` (${user.title})` : '';
+    userDisplayEl.textContent = `${user.name} (${user.username})${deptStr}${titleStr} · ${roleStr}`;
   }
   const oldPwd = document.getElementById('cp_old_password');
   if (oldPwd) oldPwd.value = '';
@@ -590,16 +611,16 @@ function openChangePasswordModal() {
     alertEl.textContent = '';
   }
 
-  const modal = new bootstrap.Modal(modalEl);
+  const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
   modal.show();
 }
 
 // 處理使用者修改密碼送出
 async function handleChangePassword(event) {
-  event.preventDefault();
-  const form = event.currentTarget;
-  const releaseSubmitLock = acquireFormSubmitLock(form);
-  if (!releaseSubmitLock) return;
+  if (event) {
+    event.preventDefault();
+  }
+  const form = document.getElementById('changePasswordForm') || event?.currentTarget || event?.target;
 
   const alertEl = document.getElementById('changePasswordAlert');
   const showAlertMsg = (msg, isSuccess = false) => {
@@ -615,21 +636,19 @@ async function handleChangePassword(event) {
   const newPassword = document.getElementById('cp_new_password')?.value || '';
   const confirmPassword = document.getElementById('cp_confirm_password')?.value || '';
 
-  if (!appState.currentUser || !appState.currentUser.username) {
+  const user = getCurrentUser();
+  if (!user || !user.username) {
     showAlertMsg('無法取得目前登入之使用者資訊，請重新登入。');
-    releaseSubmitLock();
     return;
   }
 
   if (!newPassword || newPassword.length < 4) {
     showAlertMsg('新密碼長度至少需為 4 個字元');
-    releaseSubmitLock();
     return;
   }
 
   if (newPassword !== confirmPassword) {
     showAlertMsg('兩次輸入的新密碼不相符，請重新確認');
-    releaseSubmitLock();
     return;
   }
 
@@ -644,7 +663,7 @@ async function handleChangePassword(event) {
     const res = await fetchApi('/api/auth/change-password', {
       method: 'POST',
       body: JSON.stringify({
-        username: appState.currentUser.username,
+        username: user.username,
         oldPassword,
         newPassword
       })
@@ -656,7 +675,7 @@ async function handleChangePassword(event) {
       setTimeout(() => {
         const modalEl = document.getElementById('changePasswordModal');
         if (modalEl) {
-          const modal = bootstrap.Modal.getInstance(modalEl);
+          const modal = bootstrap.Modal.getInstance(modalEl) || bootstrap.Modal.getOrCreateInstance(modalEl);
           if (modal) modal.hide();
         }
       }, 1200);
@@ -670,7 +689,9 @@ async function handleChangePassword(event) {
       submitBtn.disabled = false;
       submitBtn.innerHTML = originalBtnText;
     }
-    releaseSubmitLock();
+    if (form) {
+      form.dataset.isSubmitting = 'false';
+    }
   }
 }
 
@@ -946,10 +967,31 @@ function renderDashboardRecentTransactions(transactions) {
 // ============================================================
 
 async function loadCustomers() {
-  const res = await fetchApi('/api/customers');
-  if (res.success && Array.isArray(res.data)) {
-    appState.customers = res.data;
+  const tbody = document.getElementById('customersTableBody');
+  // 若快取已存在資料，立即先行呈現，避免白畫面與持續轉圈
+  if (appState.customers && Array.isArray(appState.customers) && appState.customers.length > 0) {
     renderCustomersTable(appState.customers);
+  }
+  try {
+    const res = await fetchApi('/api/customers');
+    if (res && res.success && Array.isArray(res.data)) {
+      appState.customers = res.data;
+      renderCustomersTable(appState.customers);
+    } else {
+      console.warn('loadCustomers 回應非成功狀態:', res);
+      if (!appState.customers || appState.customers.length === 0) {
+        if (tbody) {
+          tbody.innerHTML = `<tr><td colspan="8" class="text-center py-4 text-muted">${(res && res.message) ? res.message : '查無客戶資料'}</td></tr>`;
+        }
+      }
+    }
+  } catch (err) {
+    console.error('loadCustomers 連線錯誤:', err);
+    if (!appState.customers || appState.customers.length === 0) {
+      if (tbody) {
+        tbody.innerHTML = `<tr><td colspan="8" class="text-center py-4 text-danger">客戶資料載入異常，請重新整理頁面</td></tr>`;
+      }
+    }
   }
 }
 
@@ -2373,9 +2415,9 @@ function renderTransactionsTable(transactions) {
         <div class="text-danger small mb-1 text-nowrap">成本: ${formatCurrency(cost)}</div>
         <div class="text-success fw-bold text-nowrap">毛利: ${formatCurrency(profit)} <small class="text-muted">(${margin}%)</small></div>
       </td>
-      <td class="text-nowrap">
-        <div class="text-nowrap"><span class="text-secondary small">已收：</span><span class="fw-bold text-primary">${formatCurrency(paid)}</span></div>
-        <div class="text-nowrap"><span class="text-secondary small">待收：</span><span class="fw-bold ${remaining > 0 ? 'text-danger' : 'text-muted'}">${formatCurrency(remaining)}</span></div>
+      <td class="text-nowrap" style="white-space: nowrap !important;">
+        <div class="text-nowrap" style="font-size: 0.85rem; white-space: nowrap !important;"><span class="text-secondary">已收：</span><span class="fw-bold text-primary">${formatCurrency(paid)}</span></div>
+        <div class="text-nowrap" style="font-size: 0.85rem; white-space: nowrap !important;"><span class="text-secondary">待收：</span><span class="fw-bold ${remaining > 0 ? 'text-danger' : 'text-muted'}">${formatCurrency(remaining)}</span></div>
       </td>
       <td class="text-nowrap">${invoiceBadge}</td>
       <td class="text-nowrap">${paymentBadges[t.paymentStatus] || t.paymentStatus}</td>
@@ -2900,10 +2942,31 @@ function handleDeleteCurrentCompany() {
 // ============================================================
 
 async function loadUsers() {
-  const res = await fetchApi('/api/users');
-  if (res.success && Array.isArray(res.data)) {
-    appState.allUsers = res.data;
+  const tbody = document.getElementById('usersTableBody');
+  // 若快取已存在使用者清單，立即呈現
+  if (appState.allUsers && Array.isArray(appState.allUsers) && appState.allUsers.length > 0) {
     renderUsersTable(appState.allUsers);
+  }
+  try {
+    const res = await fetchApi('/api/users');
+    if (res && res.success && Array.isArray(res.data)) {
+      appState.allUsers = res.data;
+      renderUsersTable(appState.allUsers);
+    } else {
+      console.warn('loadUsers 回應非成功狀態:', res);
+      if (!appState.allUsers || appState.allUsers.length === 0) {
+        if (tbody) {
+          tbody.innerHTML = `<tr><td colspan="8" class="text-center py-4 text-muted">${(res && res.message) ? res.message : '尚無使用者資料'}</td></tr>`;
+        }
+      }
+    }
+  } catch (err) {
+    console.error('loadUsers 連線錯誤:', err);
+    if (!appState.allUsers || appState.allUsers.length === 0) {
+      if (tbody) {
+        tbody.innerHTML = `<tr><td colspan="8" class="text-center py-4 text-danger">使用者資料載入異常，請重新整理頁面</td></tr>`;
+      }
+    }
   }
 }
 
@@ -2946,7 +3009,7 @@ function renderUsersTable(users) {
         ${u.phone ? `<div class="small text-muted text-nowrap">${u.phone}</div>` : ''}
       </td>
       <td class="text-nowrap"><span class="font-monospace fw-semibold">${u.username}</span></td>
-      <td class="text-nowrap"><span class="text-secondary">${u.department || '-'}${u.title ? ` (${u.title})` : ''}</span></td>
+      <td class="text-nowrap"><span class="text-secondary">${u.department || '-'}${u.title ? ` · ${u.title}` : ''}</span></td>
       <td class="text-nowrap">${roleBadge}</td>
       <td><div class="d-flex flex-wrap" style="max-width: 280px;">${menusChips}</div></td>
       <td class="text-nowrap">

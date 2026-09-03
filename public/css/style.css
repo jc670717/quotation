@@ -625,8 +625,10 @@ body {
 }
 
 /* 全域表格防換行與 RWD 行動體驗強化 */
+.table,
 .table th,
 .table td,
+.table tr,
 .quotation-table-header th,
 .text-nowrap,
 .quotation-code,
@@ -638,23 +640,35 @@ body {
 .table td span.text-success,
 .table td span.text-danger {
   white-space: nowrap !important;
+  word-break: keep-all !important;
 }
 
-/* 確保 Email、日期時間、代碼等單元格不被折行 */
-.table td,
+/* 確保所有標題、Email、日期時間、金額、代碼等單元格及子元素絕不折行 */
+.table th *,
+.table td *,
 .table td a,
 .table td div,
-.table td span {
-  word-break: keep-all;
+.table td span,
+.table td small,
+.table td p {
+  white-space: nowrap !important;
+  word-break: keep-all !important;
 }
 
-/* 手機與平板響應式表格 (RWD 體驗強化) */
+/* 手機與平板響應式表格 (RWD 體驗強化 - 支援平滑橫向滾動) */
 .table-responsive {
+  width: 100% !important;
   overflow-x: auto !important;
   -webkit-overflow-scrolling: touch;
   position: relative;
   scrollbar-width: thin;
   border-radius: 0.5rem;
+  display: block;
+}
+
+.table-responsive > .table {
+  width: max-content !important;
+  min-width: 100% !important;
 }
 
 .table-responsive::-webkit-scrollbar {
