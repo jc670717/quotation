@@ -1466,7 +1466,7 @@ function renderQuotationsTable(quotations) {
       <td class="text-nowrap"><span class="fw-bold text-primary">${formatCurrency(q.totalAmount)}</span></td>
       <td class="text-nowrap">
         <div class="text-danger small mb-1">成本: ${formatCurrency(q.totalCost || 0)}</div>
-        <div class="text-success fw-bold">${formatCurrency(profit)} <small class="text-muted">(${margin}%)</small></div>
+        <div class="text-success fw-bold">毛利: ${formatCurrency(profit)} <small class="text-muted">(${margin}%)</small></div>
       </td>
       <td>
         <div class="small fw-semibold text-dark">${q.updatedBy || q.createdBy || '系統管理者'}</div>
@@ -2233,9 +2233,9 @@ function renderTransactionsTable(transactions) {
       </td>
       <td><span class="small">${formatDate(t.transactionDate)}</span></td>
       <td><span class="fw-bold text-primary">${formatCurrency(total)}</span></td>
-      <td>
+      <td class="text-nowrap">
         <div class="text-danger small mb-1">成本: ${formatCurrency(cost)}</div>
-        <div class="text-success fw-bold">${formatCurrency(profit)} <small class="text-muted">(${margin}%)</small></div>
+        <div class="text-success fw-bold">毛利: ${formatCurrency(profit)} <small class="text-muted">(${margin}%)</small></div>
       </td>
       <td>
         <div class="small fw-bold text-primary">已收: ${formatCurrency(paid)}</div>
