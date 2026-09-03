@@ -12,6 +12,9 @@ function devApiPlugin(): Plugin {
       customerCode: 'CUST-001',
       customerName: '恆星科技 (Star Tech)',
       contactPerson: '陳經理',
+      department: '採購部',
+      title: '採購經理',
+      fax: '02-27891235',
       email: 'service@startech.tw',
       phone: '02-27891234',
       address: '台北市南港區軟體園區二期 F 棟 8 樓',
@@ -29,6 +32,9 @@ function devApiPlugin(): Plugin {
       customerCode: 'CUST-002',
       customerName: '頂尖貿易股份有限公司',
       contactPerson: '林總監',
+      department: '業務處',
+      title: '業務總監',
+      fax: '04-23567891',
       email: 'sales@apex-trade.com.tw',
       phone: '04-23567890',
       address: '台中市西屯區台灣大道三段 100 號',
@@ -46,6 +52,9 @@ function devApiPlugin(): Plugin {
       customerCode: 'CUST-003',
       customerName: '極簡室內設計',
       contactPerson: '張設計師',
+      department: '設計部',
+      title: '資深設計師',
+      fax: '02-87654322',
       email: 'design@minimalstudio.com',
       phone: '02-87654321',
       address: '台北市大安區敦化南路一段 233 巷 12 號',
@@ -736,6 +745,7 @@ function devApiPlugin(): Plugin {
     {
       id: 1,
       name: '系統管理者 (王總監)',
+      title: '系統總監',
       username: 'admin',
       password: 'admin888',
       department: '資訊管理部',
@@ -752,6 +762,7 @@ function devApiPlugin(): Plugin {
     {
       id: 2,
       name: '陳大明 (業務經理)',
+      title: '業務經理',
       username: 'sales_chen',
       password: 'user123',
       department: '業務一部',
@@ -768,6 +779,7 @@ function devApiPlugin(): Plugin {
     {
       id: 3,
       name: '林小花 (業務助理)',
+      title: '業務助理',
       username: 'sales_lin',
       password: 'user123',
       department: '業務支援部',
@@ -784,6 +796,7 @@ function devApiPlugin(): Plugin {
     {
       id: 4,
       name: '張淑芬 (財務會計)',
+      title: '財務會計專員',
       username: 'finance_wang',
       password: 'user123',
       department: '財務會計部',
@@ -1169,18 +1182,21 @@ function devApiPlugin(): Plugin {
               ...customers[targetIdx],
               customerCode: payload.customerCode || customers[targetIdx].customerCode,
               customerName: payload.customerName || customers[targetIdx].customerName,
-              contactPerson: payload.contactPerson || '',
-              email: payload.email || '',
-              phone: payload.phone || '',
-              address: payload.address || '',
-              shippingAddress: payload.shippingAddress || '',
-              paymentTerms: payload.paymentTerms || '',
-              taxId: payload.taxId || '',
-              notes: payload.notes || '',
+              contactPerson: payload.contactPerson ?? customers[targetIdx].contactPerson ?? '',
+              department: payload.department ?? customers[targetIdx].department ?? '',
+              title: payload.title ?? customers[targetIdx].title ?? '',
+              fax: payload.fax ?? customers[targetIdx].fax ?? '',
+              email: payload.email ?? customers[targetIdx].email ?? '',
+              phone: payload.phone ?? customers[targetIdx].phone ?? '',
+              address: payload.address ?? customers[targetIdx].address ?? '',
+              shippingAddress: payload.shippingAddress ?? customers[targetIdx].shippingAddress ?? '',
+              paymentTerms: payload.paymentTerms ?? customers[targetIdx].paymentTerms ?? '',
+              taxId: payload.taxId ?? customers[targetIdx].taxId ?? '',
+              notes: payload.notes ?? customers[targetIdx].notes ?? '',
               updatedBy,
               updatedAt: new Date().toISOString()
             };
-            addAuditLog('customers', '客戶管理', 'UPDATE', '修改客戶', customers[targetIdx].customerCode, customers[targetIdx].customerName, updatedBy, `更新客戶基本資料與通訊地址`);
+            addAuditLog('customers', '客戶管理', 'UPDATE', '修改客戶', customers[targetIdx].customerCode, customers[targetIdx].customerName, updatedBy, `更新客戶基本資料與通訊窗口`);
             res.end(JSON.stringify({ success: true, data: customers[targetIdx], message: '客戶資料更新成功' }));
             return;
           }
@@ -1207,6 +1223,9 @@ function devApiPlugin(): Plugin {
                 (c.customerName || '').toLowerCase().includes(search) ||
                 (c.customerCode || '').toLowerCase().includes(search) ||
                 (c.contactPerson || '').toLowerCase().includes(search) ||
+                (c.department || '').toLowerCase().includes(search) ||
+                (c.title || '').toLowerCase().includes(search) ||
+                (c.fax || '').includes(search) ||
                 (c.phone || '').includes(search) ||
                 (c.email || '').toLowerCase().includes(search)
               );
@@ -1230,6 +1249,9 @@ function devApiPlugin(): Plugin {
               customerCode: newCode,
               customerName: payload.customerName || '未命名客戶',
               contactPerson: payload.contactPerson || '',
+              department: payload.department || '',
+              title: payload.title || '',
+              fax: payload.fax || '',
               email: payload.email || '',
               phone: payload.phone || '',
               address: payload.address || '',
@@ -2177,6 +2199,7 @@ function devApiPlugin(): Plugin {
               data: {
                 id: user.id,
                 name: user.name,
+                title: user.title || '',
                 username: user.username,
                 department: user.department,
                 role: user.role,
@@ -2192,6 +2215,46 @@ function devApiPlugin(): Plugin {
           } catch (err: any) {
             res.statusCode = 500;
             res.end(JSON.stringify({ success: false, data: null, message: '登入程序異常', error: err.message }));
+          }
+          return;
+        }
+
+        // 使用者自主修改個人密碼
+        if (url === '/api/auth/change-password' && req.method === 'POST') {
+          try {
+            const payload = await getBody();
+            const { username, oldPassword, newPassword } = payload;
+            if (!username || !newPassword) {
+              res.statusCode = 400;
+              res.end(JSON.stringify({ success: false, data: null, message: '請提供帳號與新密碼' }));
+              return;
+            }
+            if (newPassword.length < 4) {
+              res.statusCode = 400;
+              res.end(JSON.stringify({ success: false, data: null, message: '新密碼長度至少需 4 個字元' }));
+              return;
+            }
+            const userIdx = users.findIndex(u => u.username.toLowerCase() === String(username).trim().toLowerCase());
+            if (userIdx === -1) {
+              res.statusCode = 404;
+              res.end(JSON.stringify({ success: false, data: null, message: '找不到該帳號' }));
+              return;
+            }
+            // 檢查原密碼 (若有設置原密碼且非空白)
+            const currentPwd = users[userIdx].password;
+            if (currentPwd && oldPassword && currentPwd !== oldPassword.trim()) {
+              res.statusCode = 400;
+              res.end(JSON.stringify({ success: false, data: null, message: '原密碼輸入不正確，請重新輸入' }));
+              return;
+            }
+            users[userIdx].password = newPassword.trim();
+            users[userIdx].updatedAt = new Date().toISOString();
+            addAuditLog('users', '使用者與權限管理', 'UPDATE', '修改個人密碼', users[userIdx].username, users[userIdx].name, users[userIdx].name, `使用者自主更新登入密碼`);
+            res.statusCode = 200;
+            res.end(JSON.stringify({ success: true, data: null, message: '密碼已成功變更，請妥善保管新密碼！' }));
+          } catch (err: any) {
+            res.statusCode = 500;
+            res.end(JSON.stringify({ success: false, data: null, message: '變更密碼失敗', error: err.message }));
           }
           return;
         }
@@ -2229,6 +2292,7 @@ function devApiPlugin(): Plugin {
             const newUser = {
               id: newId,
               name: payload.name,
+              title: payload.title || '',
               username: payload.username,
               password: payload.password || '123456',
               department: payload.department || '業務部',
@@ -2248,7 +2312,7 @@ function devApiPlugin(): Plugin {
             res.statusCode = 201;
             res.end(JSON.stringify({
               success: true,
-              data: { id: newUser.id, name: newUser.name, username: newUser.username, role: newUser.role },
+              data: { id: newUser.id, name: newUser.name, username: newUser.username, role: newUser.role, title: newUser.title },
               message: '使用者建立成功'
             }));
           } catch (err: any) {
@@ -2271,9 +2335,12 @@ function devApiPlugin(): Plugin {
             }
 
             const updatedBy = payload.updatedBy || '系統管理者';
+            // 登入帳號不可修改：強制保留 users[idx].username
             users[idx] = {
               ...users[idx],
               name: payload.name || users[idx].name,
+              title: payload.title ?? users[idx].title ?? '',
+              username: users[idx].username, // 登入帳號不能修改
               department: payload.department ?? users[idx].department,
               phone: payload.phone ?? users[idx].phone,
               email: payload.email ?? users[idx].email,
@@ -2288,7 +2355,7 @@ function devApiPlugin(): Plugin {
             addAuditLog('users', '使用者與權限管理', 'UPDATE', '修改使用者權限', users[idx].username, users[idx].name, updatedBy, `更新使用者帳號資料與左側選單存取權限`);
             res.end(JSON.stringify({
               success: true,
-              data: { id: userId, name: users[idx].name, username: users[idx].username },
+              data: { id: userId, name: users[idx].name, username: users[idx].username, title: users[idx].title },
               message: '使用者資訊已更新'
             }));
           } catch (err: any) {

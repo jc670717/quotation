@@ -12,6 +12,9 @@ CREATE TABLE IF NOT EXISTS customers (
     customer_name VARCHAR(255) NOT NULL,
     tax_id VARCHAR(50),
     contact_person VARCHAR(100),
+    department VARCHAR(100),
+    title VARCHAR(100),
+    fax VARCHAR(50),
     email VARCHAR(255),
     phone VARCHAR(50),
     address VARCHAR(500),
@@ -113,6 +116,7 @@ CREATE TABLE IF NOT EXISTS company_settings (
 CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
+    title VARCHAR(100),
     username VARCHAR(50) NOT NULL UNIQUE,
     password VARCHAR(255) NOT NULL DEFAULT 'admin888',
     department VARCHAR(100) DEFAULT '業務部',

@@ -547,7 +547,8 @@ function renderCurrentUserHeader() {
   const shortName = (u.name || 'User').substring(0, 1);
   if (headerAvatar) headerAvatar.textContent = shortName;
   if (headerName) headerName.textContent = u.name || u.username;
-  if (headerDept) headerDept.textContent = u.department || '未分配部門';
+  const deptDisplay = (u.department || '未分配部門') + (u.title ? ` · ${u.title}` : '');
+  if (headerDept) headerDept.textContent = deptDisplay;
 
   if (headerRoleBadge) {
     if (u.role === 'ADMIN') {
@@ -558,6 +559,95 @@ function renderCurrentUserHeader() {
       headerRoleBadge.textContent = '業務人員';
     }
   }
+}
+
+// 開啟使用者修改自己密碼 Modal
+function openChangePasswordModal() {
+  const modalEl = document.getElementById('changePasswordModal');
+  if (!modalEl) return;
+
+  const usernameInput = document.getElementById('cp_username');
+  if (usernameInput) {
+    usernameInput.value = appState.currentUser ? (appState.currentUser.username + (appState.currentUser.name ? ` (${appState.currentUser.name})` : '')) : '';
+  }
+  const oldPwd = document.getElementById('cp_old_password');
+  if (oldPwd) oldPwd.value = '';
+  const newPwd = document.getElementById('cp_new_password');
+  if (newPwd) newPwd.value = '';
+  const confirmPwd = document.getElementById('cp_confirm_password');
+  if (confirmPwd) confirmPwd.value = '';
+
+  const errEl = document.getElementById('changePasswordError');
+  if (errEl) errEl.classList.add('d-none');
+  const succEl = document.getElementById('changePasswordSuccess');
+  if (succEl) succEl.classList.add('d-none');
+
+  const modal = new bootstrap.Modal(modalEl);
+  modal.show();
+}
+
+// 處理使用者修改密碼送出
+async function handleChangePassword(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const releaseSubmitLock = acquireFormSubmitLock(form);
+  if (!releaseSubmitLock) return;
+
+  const errEl = document.getElementById('changePasswordError');
+  const succEl = document.getElementById('changePasswordSuccess');
+  if (errEl) errEl.classList.add('d-none');
+  if (succEl) succEl.classList.add('d-none');
+
+  const oldPassword = document.getElementById('cp_old_password')?.value || '';
+  const newPassword = document.getElementById('cp_new_password')?.value || '';
+  const confirmPassword = document.getElementById('cp_confirm_password')?.value || '';
+
+  if (!newPassword || newPassword.length < 4) {
+    if (errEl) {
+      errEl.textContent = '新密碼長度至少需為 4 個字元';
+      errEl.classList.remove('d-none');
+    }
+    releaseSubmitLock();
+    return;
+  }
+
+  if (newPassword !== confirmPassword) {
+    if (errEl) {
+      errEl.textContent = '兩次輸入的新密碼不相符，請重新確認';
+      errEl.classList.remove('d-none');
+    }
+    releaseSubmitLock();
+    return;
+  }
+
+  const username = appState.currentUser ? appState.currentUser.username : '';
+  const res = await fetchApi('/api/auth/change-password', {
+    method: 'POST',
+    body: JSON.stringify({
+      username,
+      oldPassword,
+      newPassword
+    })
+  });
+
+  if (res.success) {
+    if (succEl) {
+      succEl.textContent = res.message || '密碼修改成功！';
+      succEl.classList.remove('d-none');
+    }
+    showAlert('密碼已成功變更，請妥善保管您的新密碼！', 'success');
+    setTimeout(() => {
+      const modalEl = document.getElementById('changePasswordModal');
+      const modal = bootstrap.Modal.getInstance(modalEl);
+      if (modal) modal.hide();
+    }, 1200);
+  } else {
+    if (errEl) {
+      errEl.textContent = res.message || '密碼變更失敗，請確認原密碼是否正確。';
+      errEl.classList.remove('d-none');
+    }
+  }
+  releaseSubmitLock();
 }
 
 // 開啟切換使用者 Modal
@@ -846,6 +936,7 @@ function renderCustomersTable(customers) {
 
   customers.forEach(c => {
     const tr = document.createElement('tr');
+    const contactDeptTitle = [c.department, c.title].filter(Boolean).join(' · ');
     tr.innerHTML = `
       <td><span class="quotation-code">${c.customerCode || '-'}</span></td>
       <td>
@@ -853,9 +944,13 @@ function renderCustomersTable(customers) {
         <div class="small text-muted">${c.notes || ''}</div>
       </td>
       <td><span class="font-monospace">${c.taxId || '-'}</span></td>
-      <td><span class="fw-semibold">${c.contactPerson || '-'}</span></td>
+      <td>
+        <div class="fw-semibold">${c.contactPerson || '-'}</div>
+        ${contactDeptTitle ? `<div class="small text-muted">${contactDeptTitle}</div>` : ''}
+      </td>
       <td>
         <div>📞 ${c.phone || '-'}</div>
+        ${c.fax ? `<div class="small text-muted">📠 傳真: ${c.fax}</div>` : ''}
         <div class="small text-muted">✉️ ${c.email || '-'}</div>
       </td>
       <td><small class="text-secondary">${c.address || '-'}</small></td>
@@ -881,6 +976,9 @@ function handleCustomerSearch() {
       (c.customerName || '').toLowerCase().includes(keyword) ||
       (c.customerCode || '').toLowerCase().includes(keyword) ||
       (c.contactPerson || '').toLowerCase().includes(keyword) ||
+      (c.department || '').toLowerCase().includes(keyword) ||
+      (c.title || '').toLowerCase().includes(keyword) ||
+      (c.fax || '').includes(keyword) ||
       (c.phone || '').includes(keyword) ||
       (c.email || '').toLowerCase().includes(keyword)
     );
@@ -892,6 +990,9 @@ function openCreateCustomerModal() {
   const form = document.getElementById('customerForm');
   if (form) form.reset();
   document.getElementById('c_id').value = '';
+  if (document.getElementById('c_department')) document.getElementById('c_department').value = '';
+  if (document.getElementById('c_title')) document.getElementById('c_title').value = '';
+  if (document.getElementById('c_fax')) document.getElementById('c_fax').value = '';
   document.getElementById('customerModalTitle').textContent = '➕ 新增客戶資料';
   
   const modal = new bootstrap.Modal(document.getElementById('customerModal'));
@@ -907,6 +1008,9 @@ function openEditCustomerModal(id) {
   document.getElementById('c_name').value = c.customerName || '';
   document.getElementById('c_tax_id').value = c.taxId || '';
   document.getElementById('c_contact_person').value = c.contactPerson || '';
+  if (document.getElementById('c_department')) document.getElementById('c_department').value = c.department || '';
+  if (document.getElementById('c_title')) document.getElementById('c_title').value = c.title || '';
+  if (document.getElementById('c_fax')) document.getElementById('c_fax').value = c.fax || '';
   document.getElementById('c_phone').value = c.phone || '';
   document.getElementById('c_email').value = c.email || '';
   document.getElementById('c_payment_terms').value = c.paymentTerms || '';
@@ -934,6 +1038,9 @@ async function handleSaveCustomer(event) {
     customerName: document.getElementById('c_name').value.trim(),
     taxId: document.getElementById('c_tax_id').value.trim(),
     contactPerson: document.getElementById('c_contact_person').value.trim(),
+    department: document.getElementById('c_department')?.value.trim() || '',
+    title: document.getElementById('c_title')?.value.trim() || '',
+    fax: document.getElementById('c_fax')?.value.trim() || '',
     phone: document.getElementById('c_phone').value.trim(),
     email: document.getElementById('c_email').value.trim(),
     paymentTerms: document.getElementById('c_payment_terms').value.trim(),
@@ -2811,13 +2918,13 @@ function renderUsersTable(users) {
             ${(u.name || u.username).substring(0, 1)}
           </div>
           <div>
-            <div class="fw-bold text-dark">${u.name}</div>
+            <div class="fw-bold text-dark">${u.name} ${u.title ? `<span class="badge bg-secondary-subtle text-secondary ms-1 fw-normal">${u.title}</span>` : ''}</div>
             <div class="small text-muted">${u.phone || ''}</div>
           </div>
         </div>
       </td>
       <td><span class="font-monospace fw-semibold">${u.username}</span></td>
-      <td><span class="text-secondary">${u.department || '-'}</span></td>
+      <td><span class="text-secondary">${u.department || '-'}${u.title ? ` (${u.title})` : ''}</span></td>
       <td>${roleBadge}</td>
       <td><div class="d-flex flex-wrap" style="max-width: 280px;">${menusChips}</div></td>
       <td>
@@ -2852,6 +2959,7 @@ function openCreateUserModal() {
   if (form) form.reset();
   document.getElementById('u_id').value = '';
   document.getElementById('u_username').readOnly = false;
+  if (document.getElementById('u_title')) document.getElementById('u_title').value = '';
   handleUserRoleChange('USER');
 
   // 預設勾選常用業務選單
@@ -2871,8 +2979,10 @@ function openEditUserModal(id) {
 
   document.getElementById('u_id').value = u.id;
   document.getElementById('u_name').value = u.name || '';
+  if (document.getElementById('u_title')) document.getElementById('u_title').value = u.title || '';
   document.getElementById('u_username').value = u.username || '';
-  document.getElementById('u_username').readOnly = (u.id === 1);
+  // 需求：登入帳號一旦建立後即不可修改
+  document.getElementById('u_username').readOnly = true;
   document.getElementById('u_password').value = '';
   document.getElementById('u_department').value = u.department || '';
   document.getElementById('u_phone').value = u.phone || '';
@@ -2911,6 +3021,7 @@ async function handleSaveUser(event) {
 
   const payload = {
     name: document.getElementById('u_name').value.trim(),
+    title: document.getElementById('u_title')?.value.trim() || '',
     username: document.getElementById('u_username').value.trim(),
     password: document.getElementById('u_password').value.trim(),
     department: document.getElementById('u_department').value.trim(),

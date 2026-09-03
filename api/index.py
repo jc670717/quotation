@@ -319,6 +319,9 @@ class CustomerInput(BaseModel):
     customerName: str = Field(..., min_length=1, max_length=255)
     taxId: Optional[str] = Field(None, max_length=50)
     contactPerson: Optional[str] = Field(None, max_length=100)
+    department: Optional[str] = Field(None, max_length=100)
+    title: Optional[str] = Field(None, max_length=100)
+    fax: Optional[str] = Field(None, max_length=50)
     email: Optional[str] = Field(None, max_length=255)
     phone: Optional[str] = Field(None, max_length=50)
     address: Optional[str] = Field(None, max_length=500)
@@ -485,6 +488,7 @@ class CompanyInput(BaseModel):
 
 class UserInput(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
+    title: Optional[str] = Field(None, max_length=100)
     username: str = Field(..., min_length=2, max_length=50)
     password: Optional[str] = None
     department: Optional[str] = "業務部"
@@ -495,6 +499,14 @@ class UserInput(BaseModel):
     status: Optional[str] = "ACTIVE"
     createdBy: Optional[str] = None
     updatedBy: Optional[str] = None
+
+    class Config:
+        extra = "ignore"
+
+class ChangePasswordInput(BaseModel):
+    username: str = Field(..., min_length=1, max_length=50)
+    oldPassword: Optional[str] = None
+    newPassword: str = Field(..., min_length=4, max_length=255)
 
     class Config:
         extra = "ignore"
