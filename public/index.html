@@ -677,8 +677,7 @@
                       <th>客戶名稱</th>
                       <th>交易日期</th>
                       <th>交易總額</th>
-                      <th>成本金額</th>
-                      <th>毛利 (毛利率)</th>
+                      <th>成本 / 毛利</th>
                       <th>已付 / 待付金額</th>
                       <th>發票開立明細</th>
                       <th>付款狀態</th>
@@ -687,7 +686,7 @@
                     </tr>
                   </thead>
                   <tbody id="transactionsTableBody">
-                    <tr><td colspan="11" class="text-center py-4 text-muted">資料載入中...</td></tr>
+                    <tr><td colspan="10" class="text-center py-4 text-muted">資料載入中...</td></tr>
                   </tbody>
                 </table>
               </div>
@@ -1172,7 +1171,7 @@
 
     <!-- 3. 交易管理 Modal (Transaction Modal - 包含成本毛利毛利率、已付待付金額與多筆發票明細) -->
     <div class="modal fade" id="transactionModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
-      <div class="modal-dialog modal-xl modal-dialog-scrollable">
+      <div class="modal-dialog modal-xl modal-dialog-wide modal-dialog-scrollable">
         <div class="modal-content">
           <div class="modal-header bg-light">
             <h5 class="modal-title fw-bold" id="transactionModalTitle">編輯交易與發票收款紀錄</h5>
@@ -1233,10 +1232,10 @@
                   <div class="col-12 col-md-4">
                     <label class="form-label fw-semibold">付款方式</label>
                     <select id="tx_payment_method" class="form-select">
-                      <option value="電匯 (Wire Transfer)">電匯 (Wire Transfer)</option>
-                      <option value="信用卡 (Credit Card)">信用卡 (Credit Card)</option>
-                      <option value="支票 (Check)">支票 (Check)</option>
-                      <option value="現金 (Cash)">現金 (Cash)</option>
+                      <option value="電匯">電匯</option>
+                      <option value="信用卡">信用卡</option>
+                      <option value="支票">支票</option>
+                      <option value="現金">現金</option>
                     </select>
                   </div>
                 </div>
@@ -1283,19 +1282,19 @@
                 <div class="col-12 col-md-6">
                   <label class="form-label fw-semibold">整體付款狀態</label>
                   <select id="tx_payment_status" class="form-select">
-                    <option value="PENDING">待付款 (PENDING)</option>
-                    <option value="PARTIAL">部分付款 (PARTIAL)</option>
-                    <option value="PAID">已結案全額付款 (PAID)</option>
-                    <option value="REFUNDED">已退款 (REFUNDED)</option>
+                    <option value="PENDING">待付款</option>
+                    <option value="PARTIAL">部分付款</option>
+                    <option value="PAID">已結案全額付款</option>
+                    <option value="REFUNDED">已退款</option>
                   </select>
                 </div>
                 <div class="col-12 col-md-6">
                   <label class="form-label fw-semibold">履約/出貨狀態</label>
                   <select id="tx_fulfillment_status" class="form-select">
-                    <option value="PROCESSING">處理中 (PROCESSING)</option>
-                    <option value="DELIVERED">已交付 (DELIVERED)</option>
-                    <option value="COMPLETED">已結案完成 (COMPLETED)</option>
-                    <option value="CANCELLED">已取消 (CANCELLED)</option>
+                    <option value="PROCESSING">處理中</option>
+                    <option value="DELIVERED">已交付</option>
+                    <option value="COMPLETED">已結案完成</option>
+                    <option value="CANCELLED">已取消</option>
                   </select>
                 </div>
                 <div class="col-12">
@@ -1316,7 +1315,7 @@
 
     <!-- 4. 廠商 Modal (Vendor Modal) -->
     <div class="modal fade" id="vendorModal" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-dialog modal-xl modal-dialog-wide modal-dialog-scrollable">
         <div class="modal-content">
           <div class="modal-header bg-light">
             <h5 class="modal-title fw-bold" id="vendorModalTitle">新增協力廠商</h5>
@@ -1381,7 +1380,7 @@
 
     <!-- 5. 產品 Modal (Product Modal - 支援圖片上傳、品牌、型號、廠商下拉與自訂) -->
     <div class="modal fade" id="productModal" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-dialog modal-xl modal-dialog-wide modal-dialog-scrollable">
         <div class="modal-content">
           <div class="modal-header bg-light">
             <h5 class="modal-title fw-bold" id="productModalTitle">新增產品 / 服務品項</h5>
@@ -1506,7 +1505,7 @@
 
     <!-- 6. 客戶 Modal (Customer Modal) -->
     <div class="modal fade" id="customerModal" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-dialog modal-xl modal-dialog-wide modal-dialog-scrollable">
         <div class="modal-content">
           <div class="modal-header bg-light">
             <h5 class="modal-title fw-bold" id="customerModalTitle">新增客戶</h5>
@@ -1571,7 +1570,7 @@
 
     <!-- 7. 使用者與權限 Modal (User Modal - 支援 9 大選單勾選) -->
     <div class="modal fade" id="userModal" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-dialog modal-xl modal-dialog-wide modal-dialog-scrollable">
         <div class="modal-content">
           <div class="modal-header bg-light">
             <h5 class="modal-title fw-bold" id="userModalTitle">新增使用者與指派權限</h5>

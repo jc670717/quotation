@@ -1520,7 +1520,7 @@ def updateProduct(productId: int, payload: ProductInput):
                     RETURNING id, product_code as "productCode", product_name as "productName",
                               category, brand, model, vendor, vendor_id as "vendorId", unit,
                               unit_price::float as "unitPrice", cost_price::float as "costPrice",
-                              stock_quantity as "stockQuantity", image, description, status, updated_at as "updatedAt";
+                              stock_quantity as "stockQuantity", image, image as "imageUrl", description, status, updated_at as "updatedAt";
                 """, (
                     payload.productName.strip(),
                     payload.category.strip() if payload.category else "一般商品",

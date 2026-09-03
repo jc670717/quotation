@@ -32,10 +32,10 @@ const appState = {
 
 let isHandlingExpiredSession = false;
 
-// 格式化數字為千分位貨幣字串
+// 格式化數字為千分位貨幣字串（使用不換行空格，防範金額換行）
 function formatCurrency(amount) {
   const num = parseFloat(amount) || 0;
-  return 'NT$ ' + Math.round(num).toLocaleString('zh-TW');
+  return 'NT$\u00A0' + Math.round(num).toLocaleString('zh-TW');
 }
 
 // 格式化日期時間
@@ -1177,14 +1177,14 @@ function renderProductsTable(products) {
         <div class="small text-muted text-truncate" style="max-width: 220px;">${p.description || ''}</div>
       </td>
       <td>
-        <div class="fw-semibold text-dark">${p.brand || '自研'}</div>
-        <div class="small text-muted font-monospace">${p.model || '-'}</div>
+        <div class="fw-semibold text-dark">${p.brand ? p.brand : '<span class="text-muted small">-</span>'}</div>
+        <div class="small text-muted font-monospace">${p.model ? p.model : '<span class="text-muted small">-</span>'}</div>
       </td>
       <td><span class="badge bg-secondary-subtle text-secondary">${p.category || '一般'}</span></td>
       <td><span class="text-muted">${p.unit || '件'}</span></td>
-      <td><span class="text-danger fw-semibold">${formatCurrency(cost)}</span></td>
-      <td><span class="text-primary fw-bold">${formatCurrency(price)}</span></td>
-      <td>
+      <td class="text-nowrap"><span class="text-danger fw-semibold">${formatCurrency(cost)}</span></td>
+      <td class="text-nowrap"><span class="text-primary fw-bold">${formatCurrency(price)}</span></td>
+      <td class="text-nowrap">
         <span class="fw-bold text-success">${formatCurrency(profit)}</span>
         <div class="small text-muted">(${margin}%)</div>
       </td>
@@ -1461,10 +1461,10 @@ function renderQuotationsTable(quotations) {
         <div class="fw-bold text-dark">${q.customerName}</div>
         <div class="small text-muted">${q.customerContactPerson ? `窗口: ${q.customerContactPerson}` : ''}</div>
       </td>
-      <td><span class="small">${formatDate(q.issueDate)}</span></td>
+      <td class="text-nowrap"><span class="small">${formatDate(q.issueDate)}</span></td>
       <td>${statusBadges[q.status] || q.status}</td>
-      <td><span class="fw-bold text-primary">${formatCurrency(q.totalAmount)}</span></td>
-      <td>
+      <td class="text-nowrap"><span class="fw-bold text-primary">${formatCurrency(q.totalAmount)}</span></td>
+      <td class="text-nowrap">
         <div class="text-danger small mb-1">成本: ${formatCurrency(q.totalCost || 0)}</div>
         <div class="text-success fw-bold">${formatCurrency(profit)} <small class="text-muted">(${margin}%)</small></div>
       </td>
@@ -1881,6 +1881,8 @@ async function handleSaveQuotation(event) {
   const releaseSubmitLock = acquireFormSubmitLock(event.currentTarget);
   if (!releaseSubmitLock) return;
 
+  let subtotalSum = 0;
+  let totalCost = 0;
   const items = [];
   rows.forEach((row, idx) => {
     const prodSelect = row.querySelector('.item-prod-select');
@@ -1892,6 +1894,10 @@ async function handleSaveQuotation(event) {
     const qty = parseFloat(row.querySelector('.item-qty-input')?.value) || 1;
     const price = parseFloat(row.querySelector('.item-price-input')?.value) || 0;
     const cost = parseFloat(row.querySelector('.item-cost-input')?.value) || 0;
+    const lineTotal = qty * price;
+
+    subtotalSum += lineTotal;
+    totalCost += (qty * cost);
 
     items.push({
       productId: prodId,
@@ -1900,11 +1906,35 @@ async function handleSaveQuotation(event) {
       quantity: qty,
       unitPrice: price,
       costPrice: cost,
+      lineTotal,
       sortOrder: idx
     });
   });
 
   const taxMode = document.querySelector('input[name="q_tax_mode"]:checked')?.value || 'EXCLUSIVE';
+  const taxRate = 5;
+  let taxAmount = 0;
+  let totalAmount = 0;
+  let subtotalCalculated = subtotalSum;
+
+  if (taxMode === 'INCLUSIVE') {
+    totalAmount = subtotalSum;
+    const untaxed = Math.round(totalAmount / (1 + (taxRate / 100)));
+    taxAmount = totalAmount - untaxed;
+    subtotalCalculated = untaxed;
+  } else if (taxMode === 'ZERO') {
+    taxAmount = 0;
+    totalAmount = subtotalSum;
+    subtotalCalculated = subtotalSum;
+  } else {
+    // EXCLUSIVE 外加稅
+    taxAmount = Math.round(subtotalSum * (taxRate / 100));
+    totalAmount = subtotalSum + taxAmount;
+    subtotalCalculated = subtotalSum;
+  }
+
+  const grossProfit = totalAmount - totalCost;
+  const grossMargin = totalAmount > 0 ? parseFloat(((grossProfit / totalAmount) * 100).toFixed(1)) : 0;
 
   const payload = {
     quotationNumber: document.getElementById('q_number').value.trim(),
@@ -1924,6 +1954,13 @@ async function handleSaveQuotation(event) {
     expiryDate: document.getElementById('q_expiry_date').value || null,
     status: document.getElementById('q_status').value,
     taxMode,
+    taxRate,
+    subtotal: subtotalCalculated,
+    taxAmount,
+    totalAmount,
+    totalCost,
+    grossProfit,
+    grossMargin,
     notes: document.getElementById('q_notes').value.trim(),
     items,
     createdBy: appState.currentUser.name,
@@ -2196,10 +2233,9 @@ function renderTransactionsTable(transactions) {
       </td>
       <td><span class="small">${formatDate(t.transactionDate)}</span></td>
       <td><span class="fw-bold text-primary">${formatCurrency(total)}</span></td>
-      <td><span class="text-danger fw-semibold">${formatCurrency(cost)}</span></td>
       <td>
-        <span class="text-success fw-bold">${formatCurrency(profit)}</span>
-        <div class="small text-muted">(${margin}%)</div>
+        <div class="text-danger small mb-1">成本: ${formatCurrency(cost)}</div>
+        <div class="text-success fw-bold">${formatCurrency(profit)} <small class="text-muted">(${margin}%)</small></div>
       </td>
       <td>
         <div class="small fw-bold text-primary">已收: ${formatCurrency(paid)}</div>
@@ -2265,9 +2301,9 @@ function addInvoiceRow(inv = null) {
     </td>
     <td>
       <select class="form-select form-select-sm inv-status-select">
-        <option value="PAID" ${status === 'PAID' ? 'selected' : ''}>已付 (PAID)</option>
-        <option value="PENDING" ${status === 'PENDING' ? 'selected' : ''}>待付 (PENDING)</option>
-        <option value="CANCELLED" ${status === 'CANCELLED' ? 'selected' : ''}>取消 (CANCELLED)</option>
+        <option value="PAID" ${status === 'PAID' ? 'selected' : ''}>已付</option>
+        <option value="PENDING" ${status === 'PENDING' ? 'selected' : ''}>待付</option>
+        <option value="CANCELLED" ${status === 'CANCELLED' ? 'selected' : ''}>取消</option>
       </select>
     </td>
     <td>
@@ -2386,7 +2422,12 @@ async function openEditTransactionModal(id) {
   document.getElementById('tx_total_amount').value = t.totalAmount || 0;
   document.getElementById('tx_cost_price').value = t.costPrice || 0;
   document.getElementById('tx_paid_amount').value = t.paidAmount || 0;
-  document.getElementById('tx_payment_method').value = t.paymentMethod || '電匯 (Wire Transfer)';
+  let payMethod = t.paymentMethod || '電匯';
+  if (payMethod.includes('電匯')) payMethod = '電匯';
+  else if (payMethod.includes('信用卡')) payMethod = '信用卡';
+  else if (payMethod.includes('支票')) payMethod = '支票';
+  else if (payMethod.includes('現金')) payMethod = '現金';
+  document.getElementById('tx_payment_method').value = payMethod;
   document.getElementById('tx_payment_status').value = t.paymentStatus || 'PENDING';
   document.getElementById('tx_fulfillment_status').value = t.fulfillmentStatus || 'PROCESSING';
   document.getElementById('tx_notes').value = t.notes || '';
