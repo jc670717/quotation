@@ -604,11 +604,11 @@
                 <div class="col-12 col-md-4 col-lg-3">
                   <select id="quotationStatusFilter" class="form-select" onchange="handleQuotationSearch()">
                     <option value="">全部狀態</option>
-                    <option value="DRAFT">草稿 (Draft)</option>
-                    <option value="SENT">已送出 (Sent)</option>
-                    <option value="ACCEPTED">已核准 (Accepted)</option>
-                    <option value="REJECTED">已拒絕 (Rejected)</option>
-                    <option value="EXPIRED">已過期 (Expired)</option>
+                    <option value="DRAFT">草稿</option>
+                    <option value="SENT">已送出</option>
+                    <option value="ACCEPTED">已核准</option>
+                    <option value="REJECTED">已拒絕</option>
+                    <option value="EXPIRED">已過期</option>
                   </select>
                 </div>
               </div>
@@ -617,20 +617,18 @@
                 <table class="table table-hover align-middle mb-0">
                   <thead class="quotation-table-header">
                     <tr>
-                      <th>報價單號</th>
-                      <th>開立主體公司</th>
+                      <th>單號 / 主體公司</th>
                       <th>客戶名稱</th>
                       <th>開立日期</th>
                       <th>狀態</th>
                       <th>總金額 (含稅)</th>
-                      <th>總成本</th>
-                      <th>預估毛利 (率)</th>
+                      <th>成本 / 預估毛利</th>
                       <th>最後修改人 / 時間</th>
                       <th class="text-end">操作</th>
                     </tr>
                   </thead>
                   <tbody id="quotationsTableBody">
-                    <tr><td colspan="10" class="text-center py-4 text-muted">資料載入中...</td></tr>
+                    <tr><td colspan="8" class="text-center py-4 text-muted">資料載入中...</td></tr>
                   </tbody>
                 </table>
               </div>
@@ -663,10 +661,10 @@
                 <div class="col-12 col-md-4 col-lg-3">
                   <select id="transactionPaymentFilter" class="form-select" onchange="handleTransactionSearch()">
                     <option value="">全部付款狀態</option>
-                    <option value="PAID">已結案付款 (PAID)</option>
-                    <option value="PARTIAL">部分付款 (PARTIAL)</option>
-                    <option value="PENDING">待付款 (PENDING)</option>
-                    <option value="REFUNDED">已退款 (REFUNDED)</option>
+                    <option value="PAID">已結案付款</option>
+                    <option value="PARTIAL">部分付款</option>
+                    <option value="PENDING">待付款</option>
+                    <option value="REFUNDED">已退款</option>
                   </select>
                 </div>
               </div>
@@ -675,8 +673,7 @@
                 <table class="table table-hover align-middle mb-0">
                   <thead class="quotation-table-header">
                     <tr>
-                      <th>交易單號</th>
-                      <th>來源報價單</th>
+                      <th>交易單號 / 來源報價</th>
                       <th>客戶名稱</th>
                       <th>交易日期</th>
                       <th>交易總額</th>
@@ -690,7 +687,7 @@
                     </tr>
                   </thead>
                   <tbody id="transactionsTableBody">
-                    <tr><td colspan="12" class="text-center py-4 text-muted">資料載入中...</td></tr>
+                    <tr><td colspan="11" class="text-center py-4 text-muted">資料載入中...</td></tr>
                   </tbody>
                 </table>
               </div>
@@ -971,7 +968,7 @@
 
     <!-- 1. 報價單編輯/新增 Modal (Quotation Modal - 最上方選公司並帶入聯絡窗口) -->
     <div class="modal fade" id="quotationModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
-      <div class="modal-dialog modal-xl modal-dialog-scrollable">
+      <div class="modal-dialog modal-xl modal-dialog-wide modal-dialog-scrollable">
         <div class="modal-content">
           <div class="modal-header bg-light">
             <h5 class="modal-title fw-bold" id="quotationModalTitle">開立新報價單</h5>
@@ -1057,11 +1054,11 @@
                 <div class="col-12 col-md-3">
                   <label class="form-label fw-semibold">報價單狀態</label>
                   <select id="q_status" class="form-select">
-                    <option value="DRAFT">草稿 (DRAFT)</option>
-                    <option value="SENT">已送出 (SENT)</option>
-                    <option value="ACCEPTED">已核准 (ACCEPTED)</option>
-                    <option value="REJECTED">已拒絕 (REJECTED)</option>
-                    <option value="EXPIRED">已過期 (EXPIRED)</option>
+                    <option value="DRAFT">草稿</option>
+                    <option value="SENT">已送出</option>
+                    <option value="ACCEPTED">已核准</option>
+                    <option value="REJECTED">已拒絕</option>
+                    <option value="EXPIRED">已過期</option>
                   </select>
                 </div>
               </div>

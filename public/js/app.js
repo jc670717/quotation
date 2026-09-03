@@ -1434,18 +1434,18 @@ function renderQuotationsTable(quotations) {
   tbody.innerHTML = '';
 
   if (quotations.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="10" class="text-center py-4 text-muted">尚無報價單紀錄</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4 text-muted">尚無報價單紀錄</td></tr>';
     return;
   }
 
   quotations.forEach(q => {
     const tr = document.createElement('tr');
     const statusBadges = {
-      DRAFT: '<span class="badge-draft">草稿 (Draft)</span>',
-      SENT: '<span class="badge-sent">已送出 (Sent)</span>',
-      ACCEPTED: '<span class="badge-accepted">已核准 (Accepted)</span>',
-      REJECTED: '<span class="badge-rejected">已拒絕 (Rejected)</span>',
-      EXPIRED: '<span class="badge-expired">已過期 (Expired)</span>'
+      DRAFT: '<span class="badge-draft">草稿</span>',
+      SENT: '<span class="badge-sent">已送出</span>',
+      ACCEPTED: '<span class="badge-accepted">已核准</span>',
+      REJECTED: '<span class="badge-rejected">已拒絕</span>',
+      EXPIRED: '<span class="badge-expired">已過期</span>'
     };
 
     const profit = q.grossProfit !== undefined ? q.grossProfit : ((q.totalAmount || 0) - (q.totalCost || 0));
@@ -1453,8 +1453,10 @@ function renderQuotationsTable(quotations) {
     const canManage = canManageQuotation(q);
 
     tr.innerHTML = `
-      <td><span class="quotation-code">${q.quotationNumber}</span></td>
-      <td><span class="badge bg-light text-dark border">${q.companyName || '極簡資訊科技'}</span></td>
+      <td>
+        <div class="quotation-code fw-bold mb-1">${q.quotationNumber}</div>
+        <span class="badge bg-light text-dark border">${q.companyName || '極簡資訊科技'}</span>
+      </td>
       <td>
         <div class="fw-bold text-dark">${q.customerName}</div>
         <div class="small text-muted">${q.customerContactPerson ? `窗口: ${q.customerContactPerson}` : ''}</div>
@@ -1462,10 +1464,9 @@ function renderQuotationsTable(quotations) {
       <td><span class="small">${formatDate(q.issueDate)}</span></td>
       <td>${statusBadges[q.status] || q.status}</td>
       <td><span class="fw-bold text-primary">${formatCurrency(q.totalAmount)}</span></td>
-      <td><span class="text-danger fw-semibold">${formatCurrency(q.totalCost || 0)}</span></td>
       <td>
-        <span class="text-success fw-bold">${formatCurrency(profit)}</span>
-        <div class="small text-muted">(${margin}%)</div>
+        <div class="text-danger small mb-1">成本: ${formatCurrency(q.totalCost || 0)}</div>
+        <div class="text-success fw-bold">${formatCurrency(profit)} <small class="text-muted">(${margin}%)</small></div>
       </td>
       <td>
         <div class="small fw-semibold text-dark">${q.updatedBy || q.createdBy || '系統管理者'}</div>
@@ -2158,7 +2159,7 @@ function renderTransactionsTable(transactions) {
   tbody.innerHTML = '';
 
   if (transactions.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="12" class="text-center py-4 text-muted">尚無交易立案紀錄</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="11" class="text-center py-4 text-muted">尚無交易立案紀錄</td></tr>';
     return;
   }
 
@@ -2185,8 +2186,10 @@ function renderTransactionsTable(transactions) {
       `<span class="text-muted small">尚未開立</span>`;
 
     tr.innerHTML = `
-      <td><span class="quotation-code">${t.transactionNumber}</span></td>
-      <td><span class="small font-monospace">${t.quotationNumber || '手動建立'}</span></td>
+      <td>
+        <div class="quotation-code fw-bold mb-1">${t.transactionNumber}</div>
+        <div class="small text-muted"><span class="text-secondary">報價:</span> <span class="font-monospace">${t.quotationNumber || '手動建立'}</span></div>
+      </td>
       <td>
         <div class="fw-bold text-dark">${t.customerName}</div>
         <div class="small text-muted">${t.customerEmail || ''}</div>

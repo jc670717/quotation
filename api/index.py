@@ -1815,11 +1815,29 @@ def createQuotation(payload: QuotationInput, request: Request):
                 "notes": item.notes
             })
 
+        taxMode = (payload.taxMode or "EXCLUSIVE").upper()
         taxRate = payload.taxRate or Decimal("5.00")
         discount = payload.discountAmount or Decimal("0.00")
         netSubtotal = max(Decimal("0.00"), calculatedSubtotal - discount)
-        taxAmount = (netSubtotal * (taxRate / Decimal("100"))).quantize(Decimal("0.01"))
-        totalAmount = payload.totalAmount if payload.totalAmount is not None else (netSubtotal + taxAmount)
+        
+        if taxMode == "INCLUSIVE":
+            if payload.totalAmount is not None:
+                totalAmount = Decimal(str(payload.totalAmount))
+            else:
+                totalAmount = netSubtotal
+            untaxed = (totalAmount / (Decimal("1.00") + (taxRate / Decimal("100")))).quantize(Decimal("0.01"))
+            taxAmount = totalAmount - untaxed
+            subtotalDb = untaxed
+        elif taxMode == "ZERO":
+            taxAmount = Decimal("0.00")
+            totalAmount = netSubtotal if payload.totalAmount is None else Decimal(str(payload.totalAmount))
+            subtotalDb = netSubtotal
+        else:
+            # EXCLUSIVE
+            subtotalDb = netSubtotal
+            taxAmount = (netSubtotal * (taxRate / Decimal("100"))).quantize(Decimal("0.01"))
+            totalAmount = netSubtotal + taxAmount if payload.totalAmount is None else Decimal(str(payload.totalAmount))
+
         estimatedProfit = totalAmount - totalCost
 
         with getDbConnection() as conn:
@@ -1854,7 +1872,7 @@ def createQuotation(payload: QuotationInput, request: Request):
                     payload.validUntil or payload.expiryDate,
                     payload.status or "DRAFT",
                     payload.taxMode or "EXCLUSIVE",
-                    float(calculatedSubtotal),
+                    float(subtotalDb),
                     float(taxRate),
                     float(taxAmount),
                     float(discount),
@@ -1917,11 +1935,29 @@ def updateQuotation(quotationId: int, payload: QuotationInput, request: Request)
                 "notes": item.notes
             })
 
+        taxMode = (payload.taxMode or "EXCLUSIVE").upper()
         taxRate = payload.taxRate or Decimal("5.00")
         discount = payload.discountAmount or Decimal("0.00")
         netSubtotal = max(Decimal("0.00"), calculatedSubtotal - discount)
-        taxAmount = (netSubtotal * (taxRate / Decimal("100"))).quantize(Decimal("0.01"))
-        totalAmount = payload.totalAmount if payload.totalAmount is not None else (netSubtotal + taxAmount)
+        
+        if taxMode == "INCLUSIVE":
+            if payload.totalAmount is not None:
+                totalAmount = Decimal(str(payload.totalAmount))
+            else:
+                totalAmount = netSubtotal
+            untaxed = (totalAmount / (Decimal("1.00") + (taxRate / Decimal("100")))).quantize(Decimal("0.01"))
+            taxAmount = totalAmount - untaxed
+            subtotalDb = untaxed
+        elif taxMode == "ZERO":
+            taxAmount = Decimal("0.00")
+            totalAmount = netSubtotal if payload.totalAmount is None else Decimal(str(payload.totalAmount))
+            subtotalDb = netSubtotal
+        else:
+            # EXCLUSIVE
+            subtotalDb = netSubtotal
+            taxAmount = (netSubtotal * (taxRate / Decimal("100"))).quantize(Decimal("0.01"))
+            totalAmount = netSubtotal + taxAmount if payload.totalAmount is None else Decimal(str(payload.totalAmount))
+
         estimatedProfit = totalAmount - totalCost
 
         with getDbConnection() as conn:
@@ -1948,7 +1984,7 @@ def updateQuotation(quotationId: int, payload: QuotationInput, request: Request)
                     payload.customerAddress, payload.shippingAddress, payload.paymentTerms, original["sales_rep"], original["sales_phone"], original["sales_email"],
                     payload.issueDate, payload.expiryDate or payload.validUntil, payload.validUntil or payload.expiryDate,
                     payload.status or "DRAFT", payload.taxMode or "EXCLUSIVE",
-                    float(calculatedSubtotal), float(taxRate), float(taxAmount), float(discount), float(totalAmount),
+                    float(subtotalDb), float(taxRate), float(taxAmount), float(discount), float(totalAmount),
                     float(totalCost), float(estimatedProfit), payload.notes, operator, quotationId
                 ))
                 if not cur.fetchone():
@@ -2195,13 +2231,16 @@ def convertQuotationToTransaction(quotationId: int, request: Request):
                     )
 
                 cur.execute("""
-                    SELECT qi.quantity, COALESCE(p.cost_price, 0.00) as cost_price
+                    SELECT qi.quantity, COALESCE(qi.cost_price, p.cost_price, 0.00) as cost_price
                     FROM quotation_items qi
                     LEFT JOIN products p ON qi.product_id = p.id
                     WHERE qi.quotation_id = %s;
                 """, (quotationId,))
                 items = cur.fetchall()
-                totalCost = sum(float(it["quantity"]) * float(it["cost_price"]) for it in items)
+                if items:
+                    totalCost = sum(float(it["quantity"]) * float(it["cost_price"]) for it in items)
+                else:
+                    totalCost = float(q.get("total_cost") or 0.0)
 
                 operator = getattr(request.state, "user", {}).get("name") or "系統使用者"
 
