@@ -6,6 +6,26 @@
  * ============================================================
  */
 
+// 全域預設主體公司（防止離線、載入中或非管理者帳號無權限時選單空白）
+const DEFAULT_COMPANY_FALLBACK = {
+  id: 1,
+  companyName: '宏碁資訊科技有限公司',
+  taxId: '28491023',
+  phone: '(02) 2789-0123',
+  fax: '(02) 2789-0124',
+  address: '台北市南港區園區街 3-1 號 8 樓',
+  email: 'contact@acer-info.com.tw',
+  website: 'https://www.acer-info.com.tw',
+  bankName: '台灣銀行 南港分行',
+  bankAccount: '012-345-678901',
+  bankAccountName: '宏碁資訊科技有限公司',
+  contactPerson: '王總監',
+  contactPhone: '(02) 2789-0123 #101',
+  contactEmail: 'director.wang@acer-info.com.tw',
+  isDefault: true,
+  defaultTerms: '1. 本報價單有效期限為 30 天。\n2. 付款條件：月結 30 天電匯。\n3. 保固服務：提供一年 8x5 到府維護與技術支援。'
+};
+
 // 全域狀態儲存物件
 const appState = {
   // 當前登入操作使用者 (預設管理者)
@@ -18,8 +38,8 @@ const appState = {
     allowedMenus: ['dashboard', 'customers', 'vendors', 'products', 'quotations', 'transactions', 'company', 'users', 'audit_logs']
   },
   allUsers: [],
-  allCompanies: [],
-  currentCompany: null,
+  allCompanies: [DEFAULT_COMPANY_FALLBACK],
+  currentCompany: DEFAULT_COMPANY_FALLBACK,
   customers: [],
   vendors: [],
   products: [],
@@ -384,13 +404,37 @@ async function loadInitialUsers() {
   }
 }
 
+// 確保公司清單已正確載入（若尚未載入則即時請求，失敗時平穩退回預設主體公司）
+async function ensureCompaniesLoaded() {
+  if (!appState.allCompanies || appState.allCompanies.length === 0 || (appState.allCompanies.length === 1 && appState.allCompanies[0].id === 1 && !appState.allCompanies[0].updatedAt)) {
+    await loadInitialCompanies();
+  }
+  if (!appState.allCompanies || appState.allCompanies.length === 0) {
+    appState.allCompanies = [DEFAULT_COMPANY_FALLBACK];
+    appState.currentCompany = DEFAULT_COMPANY_FALLBACK;
+  }
+}
+
 // 載入公司清單
 async function loadInitialCompanies() {
-  const res = await fetchApi('/api/companies');
-  if (res.success && Array.isArray(res.data) && res.data.length > 0) {
-    appState.allCompanies = res.data;
-    const defaultComp = appState.allCompanies.find(c => c.isDefault) || appState.allCompanies[0];
-    appState.currentCompany = defaultComp;
+  try {
+    const res = await fetchApi('/api/companies');
+    if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
+      appState.allCompanies = res.data;
+      const defaultComp = appState.allCompanies.find(c => c.isDefault) || appState.allCompanies[0];
+      appState.currentCompany = defaultComp;
+    } else {
+      if (!appState.allCompanies || appState.allCompanies.length === 0) {
+        appState.allCompanies = [DEFAULT_COMPANY_FALLBACK];
+        appState.currentCompany = DEFAULT_COMPANY_FALLBACK;
+      }
+    }
+  } catch (err) {
+    console.warn('載入主體公司資料失敗，維持使用系統預設公司:', err);
+    if (!appState.allCompanies || appState.allCompanies.length === 0) {
+      appState.allCompanies = [DEFAULT_COMPANY_FALLBACK];
+      appState.currentCompany = DEFAULT_COMPANY_FALLBACK;
+    }
   }
 }
 
@@ -1713,19 +1757,33 @@ async function reviseQuotation(quotationId) {
 // 報價單開立主體公司切換：公司資料控制抬頭與條款，聯絡窗口固定採目前登入者。
 function handleQuotationCompanyChange() {
   const companySelect = document.getElementById('q_company_id');
+  if (!companySelect) return;
   const compId = parseInt(companySelect.value, 10);
-  const comp = appState.allCompanies.find(c => c.id === compId) || appState.allCompanies[0];
+  const list = (appState.allCompanies && appState.allCompanies.length > 0) ? appState.allCompanies : [DEFAULT_COMPANY_FALLBACK];
+  const comp = list.find(c => c.id === compId) || list.find(c => c.isDefault) || list[0] || DEFAULT_COMPANY_FALLBACK;
   if (!comp) return;
 
-  document.getElementById('q_company_name').value = comp.companyName;
-  const currentUser = appState.currentUser || {};
-  document.getElementById('q_company_contact_person').value = currentUser.name || '';
-  document.getElementById('q_company_contact_phone').value = currentUser.phone || '';
-  document.getElementById('q_company_contact_email').value = currentUser.email || '';
+  const compNameInput = document.getElementById('q_company_name');
+  if (compNameInput) compNameInput.value = comp.companyName || '';
 
-  document.getElementById('q_company_contact_person_text').textContent = currentUser.name || '未設定';
-  document.getElementById('q_company_contact_phone_text').textContent = currentUser.phone || '無電話';
-  document.getElementById('q_company_contact_email_text').textContent = currentUser.email || '無 Email';
+  const currentUser = appState.currentUser || {};
+  const contactName = currentUser.name || comp.contactPerson || '業務代表';
+  const contactPhone = currentUser.phone || comp.contactPhone || comp.phone || '';
+  const contactEmail = currentUser.email || comp.contactEmail || comp.email || '';
+
+  const cpInput = document.getElementById('q_company_contact_person');
+  if (cpInput) cpInput.value = contactName;
+  const cphInput = document.getElementById('q_company_contact_phone');
+  if (cphInput) cphInput.value = contactPhone;
+  const ceInput = document.getElementById('q_company_contact_email');
+  if (ceInput) ceInput.value = contactEmail;
+
+  const cpText = document.getElementById('q_company_contact_person_text');
+  if (cpText) cpText.textContent = contactName;
+  const cphText = document.getElementById('q_company_contact_phone_text');
+  if (cphText) cphText.textContent = contactPhone || '無電話';
+  const ceText = document.getElementById('q_company_contact_email_text');
+  if (ceText) ceText.textContent = contactEmail || '無 Email';
 
   // 若尚未輸入備註，帶入該公司的預設條款
   const notesField = document.getElementById('q_notes');
@@ -1740,15 +1798,21 @@ function populateQuotationCompanySelect(selectedCompanyId = null) {
   if (!sel) return;
   sel.innerHTML = '';
 
-  appState.allCompanies.forEach(c => {
+  const list = (appState.allCompanies && appState.allCompanies.length > 0) ? appState.allCompanies : [DEFAULT_COMPANY_FALLBACK];
+
+  list.forEach(c => {
     const opt = document.createElement('option');
     opt.value = c.id;
-    opt.textContent = `${c.companyName} ${c.isDefault ? '(系統預設)' : ''}`;
+    opt.textContent = `🏢 ${c.companyName} ${c.isDefault ? '(系統預設)' : ''}`;
     if (selectedCompanyId ? (c.id === selectedCompanyId) : c.isDefault) {
       opt.selected = true;
     }
     sel.appendChild(opt);
   });
+
+  if (!sel.value && sel.options.length > 0) {
+    sel.selectedIndex = 0;
+  }
 
   handleQuotationCompanyChange();
 }
@@ -1960,7 +2024,9 @@ function calculateQuotationTotals() {
   document.getElementById('q_profit_display').textContent = `${formatCurrency(profit)} (${margin}%)`;
 }
 
-function openCreateQuotationModal() {
+async function openCreateQuotationModal() {
+  await ensureCompaniesLoaded();
+
   const form = document.getElementById('quotationForm');
   if (form) form.reset();
   document.getElementById('q_id').value = '';
@@ -1999,6 +2065,8 @@ async function fetchQuotationDetails(id) {
 }
 
 async function openEditQuotationModal(id) {
+  await ensureCompaniesLoaded();
+
   const q = await fetchQuotationDetails(id);
   if (!q) return;
   if (!canManageQuotation(q)) {
@@ -2114,13 +2182,18 @@ async function handleSaveQuotation(event) {
   const grossProfit = totalAmount - totalCost;
   const grossMargin = totalAmount > 0 ? parseFloat(((grossProfit / totalAmount) * 100).toFixed(1)) : 0;
 
+  const compIdRaw = document.getElementById('q_company_id')?.value;
+  const parsedCompId = compIdRaw ? parseInt(compIdRaw, 10) : (appState.currentCompany?.id || 1);
+  const selectedCompObj = (appState.allCompanies || []).find(c => c.id === parsedCompId) || appState.currentCompany || DEFAULT_COMPANY_FALLBACK;
+  const companyNameVal = document.getElementById('q_company_name')?.value || selectedCompObj.companyName || '宏碁資訊科技有限公司';
+
   const payload = {
     quotationNumber: document.getElementById('q_number').value.trim(),
-    companyId: parseInt(document.getElementById('q_company_id').value, 10),
-    companyName: document.getElementById('q_company_name').value,
-    salesRep: document.getElementById('q_company_contact_person').value,
-    salesPhone: document.getElementById('q_company_contact_phone').value,
-    salesEmail: document.getElementById('q_company_contact_email').value,
+    companyId: isNaN(parsedCompId) ? 1 : parsedCompId,
+    companyName: companyNameVal,
+    salesRep: document.getElementById('q_company_contact_person').value || appState.currentUser.name || selectedCompObj.contactPerson || '',
+    salesPhone: document.getElementById('q_company_contact_phone').value || appState.currentUser.phone || selectedCompObj.contactPhone || '',
+    salesEmail: document.getElementById('q_company_contact_email').value || appState.currentUser.email || selectedCompObj.contactEmail || '',
     customerId: parseInt(document.getElementById('q_customer_id').value, 10) || null,
     customerName: document.getElementById('q_customer_name').value.trim(),
     customerTaxId: document.getElementById('q_customer_tax_id').value.trim(),

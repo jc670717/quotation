@@ -134,6 +134,10 @@ async def enforceApiAuthorization(request: Request, callNext):
     claims = verifyAccessToken(token) if token else None
     if not claims:
         return createApiResponse(False, message="登入已失效或未提供有效憑證", statusCode=status.HTTP_401_UNAUTHORIZED)
+    # 公司基本資料的讀取 (GET) 是開立報價單與列印憑據的基礎資料，所有已登入使用者皆有權限讀取
+    if request.method == "GET" and (path == "/api/companies" or path.startswith("/api/companies/") or path == "/api/company"):
+        request.state.user = claims
+        return await callNext(request)
     requiredMenu = next((menu for prefix, menu in API_MENU_PATHS.items() if path.startswith(prefix)), None)
     if requiredMenu and claims.get("role") != "ADMIN" and requiredMenu not in claims.get("menus", []):
         return createApiResponse(False, message="您沒有存取此功能的權限", statusCode=status.HTTP_403_FORBIDDEN)
@@ -2416,6 +2420,34 @@ def listCompanies():
                     ORDER BY id ASC;
                 """)
                 rows = cur.fetchall()
+                if not rows:
+                    cur.execute("""
+                        INSERT INTO companies (
+                            id, company_name, tax_id, phone, fax, address, email, website,
+                            bank_name, bank_account, bank_account_name, contact_person, contact_phone,
+                            contact_email, is_default, default_terms, created_by, updated_by
+                        ) VALUES (
+                            1, '宏碁資訊科技有限公司', '28491023', '(02) 2789-0123', '(02) 2789-0124',
+                            '台北市南港區園區街 3-1 號 8 樓', 'contact@acer-info.com.tw', 'https://www.acer-info.com.tw',
+                            '台灣銀行 南港分行', '012-345-678901', '宏碁資訊科技有限公司', '王總監',
+                            '(02) 2789-0123 #101', 'director.wang@acer-info.com.tw', TRUE,
+                            '1. 本報價單有效期限為 30 天。\n2. 付款條件：月結 30 天電匯。\n3. 保固服務：提供一年 8x5 到府維護與技術支援。',
+                            '系統管理者', '系統管理者'
+                        ) ON CONFLICT (id) DO UPDATE SET is_default = TRUE;
+                    """)
+                    conn.commit()
+                    cur.execute("""
+                        SELECT id, company_name as "companyName", tax_id as "taxId", phone, fax, address,
+                               email, website, bank_name as "bankName", bank_account as "bankAccount",
+                               bank_account_name as "bankAccountName", contact_person as "contactPerson",
+                               contact_phone as "contactPhone", contact_email as "contactEmail",
+                               is_default as "isDefault", logo_url as "logoUrl", default_terms as "defaultTerms",
+                               created_by as "createdBy", updated_by as "updatedBy",
+                               created_at::text as "createdAt", updated_at::text as "updatedAt"
+                        FROM companies
+                        ORDER BY id ASC;
+                    """)
+                    rows = cur.fetchall()
 
         return createApiResponse(isSuccess=True, data=rows, message="取得公司清單成功")
     except Exception as err:
